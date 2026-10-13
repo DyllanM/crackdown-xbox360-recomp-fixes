@@ -1,0 +1,68 @@
+diff --git a/src/kernel/xam/xam_user.cpp b/src/kernel/xam/xam_user.cpp
+index 8778066..a0a248c 100644
+--- a/src/kernel/xam/xam_user.cpp
++++ b/src/kernel/xam/xam_user.cpp
+@@ -12,7 +12,9 @@
+ // Disable warnings about unused parameters for kernel functions
+ #pragma GCC diagnostic ignored "-Wunused-parameter"
+ 
++#include <algorithm>
+ #include <cstring>
++#include <vector>
+ 
+ #include <rex/cvar.h>
+ #include <rex/kernel/xam/private.h>
+@@ -27,6 +29,8 @@
+ #include <rex/system/xio.h>
+ #include <rex/system/xthread.h>
+ #include <rex/system/xtypes.h>
++#include <rex/memory/utils.h>
++#include <rex/ui/image_decode.h>
+ 
+ REXCVAR_DEFINE_UINT32(user_language, 1, "Kernel", "User's language ID");
+ 
+@@ -687,6 +691,36 @@ u32 XamParseGamerTileKey_entry(mapped_u32 key_ptr, mapped_u32 out1_ptr, mapped_u
+   return X_ERROR_SUCCESS;
+ }
+ 
++// Writes the title's XDBF icon into a linear k_8_8_8_8 surface with the given row pitch: one big-endian dword per
++// texel, red in the low byte. Texels outside the decoded image keep the fill.
++void WriteTileImage(void* buffer, u32 stride, u32 height, u64 image_id) {
++  const util::XdbfGameData db = REX_KERNEL_STATE()->title_xdbf();
++  if (!db.is_valid()) {
++    return;
++  }
++  const util::XdbfBlock block = db.GetEntry(util::XdbfSection::kImage, image_id);
++  if (!block) {
++    return;
++  }
++  int image_width = 0;
++  int image_height = 0;
++  const std::vector<uint8_t> rgba =
++      rex::ui::DecodeImageRGBA(block.buffer, block.size, image_width, image_height);
++  if (rgba.empty()) {
++    return;
++  }
++  auto* bytes = static_cast<uint8_t*>(buffer);
++  const u32 columns = (std::min)(u32(image_width), stride / 4);
++  const u32 rows = (std::min)(u32(image_height), height);
++  for (u32 y = 0; y < rows; ++y) {
++    for (u32 x = 0; x < columns; ++x) {
++      const uint8_t* texel = rgba.data() + (size_t(y) * size_t(image_width) + x) * 4;
++      const u32 packed = (u32(texel[3]) << 24) | (u32(texel[2]) << 16) | (u32(texel[1]) << 8) | u32(texel[0]);
++      rex::memory::store_and_swap<u32>(bytes + size_t(y) * stride + size_t(x) * 4, packed);
++    }
++  }
++}
++
+ u32 XamReadTileToTexture_entry(u32 unknown, u32 title_id, u64 tile_id, u32 user_index,
+                                mapped_void buffer_ptr, u32 stride, u32 height, u32 overlapped_ptr) {
+   // TODO(gibbed): unknown=0,2,3,9
+@@ -696,6 +730,7 @@ u32 XamReadTileToTexture_entry(u32 unknown, u32 title_id, u64 tile_id, u32 user_
+ 
+   size_t size = size_t(stride) * size_t(height);
+   std::memset(buffer_ptr, 0xFF, size);
++  WriteTileImage(buffer_ptr, stride, height, tile_id);
+ 
+   if (overlapped_ptr) {
+     REX_KERNEL_STATE()->CompleteOverlappedImmediate(overlapped_ptr, X_ERROR_SUCCESS);

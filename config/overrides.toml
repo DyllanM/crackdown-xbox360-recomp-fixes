@@ -1,0 +1,12 @@
+# Manual analysis fixes for Crackdown (default.xex, title 4D5307DC).
+
+[functions]
+# Branch targets the analyzer does not reach; codegen Validate fails without them.
+0x8252FD70 = {}
+0x82357EE8 = {}
+0x8247FF30 = {}
+0x82516A88 = {}
+0x8252E050 = {}
+0x825322D8 = {}
+0x82A1DD18 = {}
+0x823F0668 = {}
