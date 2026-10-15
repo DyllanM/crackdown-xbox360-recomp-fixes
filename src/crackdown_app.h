@@ -1,14 +1,12 @@
-// crackdown - ReXGlue Recompiled Project
-//
-// Customize your app by overriding virtual hooks from rex::ReXApp.
-
 #pragma once
 
 #include <rex/rex_app.h>
 
 #include "cache_device.h"
 #include "debug_saulo_diagnostics.h"
+#include "debug_saulo_no_intro.h"  // DEBUG_SAULO
 #include "fullscreen_toggle.h"
+#include "runtime_health.h"
 
 class CrackdownApp : public rex::ReXApp {
  public:
@@ -20,11 +18,7 @@ class CrackdownApp : public rex::ReXApp {
         PPCImageConfig));
   }
 
-  // Override virtual hooks for customization:
-  // void OnPostInitLogging() override {}
-  // void OnPreSetup(rex::RuntimeConfig& config) override {}
-  // void OnLoadXexImage(std::string& xex_image) override {}
-  // void OnPostLoadXexImage() override {}
+  void OnPostInitLogging() override { StartRuntimeHealth(); }
   void OnPostSetup() override {
     if (runtime()) {
       MountCacheDevice(runtime()->file_system(), user_data_root());
@@ -33,11 +27,9 @@ class CrackdownApp : public rex::ReXApp {
       AttachFullscreenToggle(window());
     }
     InstallDebugSauloFaultProbe();
+    InstallDebugSauloNoIntro();  // DEBUG_SAULO
   }
-  // void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {}
-  // std::unique_ptr<rex::ui::ImGuiDialog> CreateAchievementsOverlay() override;
-  // std::unique_ptr<rex::ui::AchievementNotificationDialog>
-  // CreateAchievementNotificationDialog() override;
-  // void OnShutdown() override {}
-  // void OnConfigurePaths(rex::PathConfig& paths) override {}
+  bool OnWindowCloseRequested() override { StopRuntimeHealth(); return true; }
+  void OnGuestThreadExit(rex::system::XThread*) override { StopRuntimeHealth(); }
+  void OnShutdown() override { StopRuntimeHealth(); }
 };

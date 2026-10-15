@@ -46,6 +46,10 @@ function Get-ValueChanges($Old, $New) {
 }
 
 function Get-BuildToolchain {
+    if (($env:PATHEXT -split ';') -notcontains '.EXE') {
+        $env:PATHEXT = ".EXE;$env:PATHEXT"
+        Write-Host 'Windows build environment: restored .EXE in PATHEXT.'
+    }
     if ($script:BuildToolchain) { return $script:BuildToolchain }
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio Installer (vswhere.exe) not found.' }

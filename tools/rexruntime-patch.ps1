@@ -4,25 +4,26 @@
 $RexglueRuntimePreset = 'win-amd64'
 $RexglueRuntimeBuildFlags = '-march=x86-64-v2'
 $RexglueRuntimeTargets = @('rexruntime', 'rexgpu-xenos')
-$RexglueRuntimeConfigs = @('Debug', 'RelWithDebInfo', 'Release')
 $RexglueRuntimeStampName = 'rexruntime-patch.txt'
 
 function Get-RexglueConfigSuffix([string]$Config) {
     return @{ Debug = 'd'; RelWithDebInfo = 'rd'; Release = '' }[$Config]
 }
 
-function Get-RexglueLayout([string]$Root) {
+function Get-RexglueLayout([string]$Root, [string]$Config = 'RelWithDebInfo') {
     $sdkDir = Join-Path $Root 'tools\rexglue\win-amd64'
     $patchDir = Join-Path $Root 'patches\rexglue-sdk'
     $baseline = Read-KeyValueFile (Join-Path $patchDir 'baseline.env')
+    $stampName = if ($Config -eq 'RelWithDebInfo') { $RexglueRuntimeStampName } else { "rexruntime-patch-$Config.txt" }
     return @{
         Root         = $Root
+        Config       = $Config
         PatchDir     = $patchDir
         Baseline     = $baseline
         SdkDir       = $sdkDir
         SdkConfigDir = Join-Path $sdkDir 'lib\cmake\rexglue'
         SdkZip       = Join-Path $Root "tools\rexglue\rexglue-sdk-$($baseline['SDK_VERSION'])-win-amd64.zip"
-        StampFile    = Join-Path $sdkDir $RexglueRuntimeStampName
+        StampFile    = Join-Path $sdkDir $stampName
     }
 }
 
@@ -38,9 +39,9 @@ function Get-RexglueRuntimePatches([string]$PatchDir) {
     return @($names | ForEach-Object { [pscustomobject]@{ Name = $_; Path = Join-Path $PatchDir $_ } })
 }
 
-# The installed files this module manages: runtime, import library and GPU plugin for every configuration.
-function Get-RexglueManagedFiles {
-    foreach ($config in $RexglueRuntimeConfigs) {
+# Runtime, import library and GPU plugin for the requested configuration.
+function Get-RexglueManagedFiles([string]$Config = 'RelWithDebInfo') {
+    foreach ($config in @($Config)) {
         $suffix = Get-RexglueConfigSuffix $config
         [pscustomobject]@{ Config = $config; Leaf = "bin/rexruntime$suffix.dll"; IsRuntime = $true }
         [pscustomobject]@{ Config = $config; Leaf = "lib/rexruntime$suffix.lib"; IsRuntime = $true }
@@ -66,7 +67,7 @@ function Get-RexglueRuntimeInputs($Layout, [string]$Mode) {
     $inputs['build.preset'] = $RexglueRuntimePreset
     $inputs['build.flags'] = $RexglueRuntimeBuildFlags
     $inputs['build.targets'] = $RexglueRuntimeTargets -join ','
-    $inputs['build.configs'] = $RexglueRuntimeConfigs -join ','
+    $inputs['build.configs'] = $Layout.Config
     $inputs['toolchain'] = (Get-BuildToolchain).Id
     foreach ($patch in @(Get-RexglueRuntimePatches $Layout.PatchDir)) { $inputs["patch.$($patch.Name)"] = Get-FileSha256 $patch.Path }
     return $inputs
@@ -91,7 +92,7 @@ function Write-RexglueStamp($Layout, $Inputs) {
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("inputs_sha256=$(Get-RexglueInputsSha256 $Inputs)")
     foreach ($key in $Inputs.Keys) { $lines.Add("input $key=$($Inputs[$key])") }
-    foreach ($file in @(Get-RexglueManagedFiles)) {
+    foreach ($file in @(Get-RexglueManagedFiles $Layout.Config)) {
         $lines.Add("file $(Get-FileSha256 (Join-Path $Layout.SdkDir $file.Leaf))  $($file.Leaf)")
     }
     [IO.File]::WriteAllText($Layout.StampFile, (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
@@ -106,7 +107,7 @@ function Move-InstalledFile([string]$Temp, [string]$Dest) {
 function Get-RexglueInstallProblems($Layout, [string]$Mode) {
     if (-not $Mode) { $Mode = Get-RexglueMode $Layout }
     $problems = New-Object System.Collections.Generic.List[string]
-    foreach ($file in @(Get-RexglueManagedFiles)) {
+    foreach ($file in @(Get-RexglueManagedFiles $Layout.Config)) {
         if (-not $Layout.Baseline.Contains("SHA256_$($file.Leaf)")) { throw "patches\rexglue-sdk\baseline.env has no SHA256_$($file.Leaf)" }
     }
     $stamp = Read-RexglueStamp $Layout.StampFile
@@ -121,7 +122,7 @@ function Get-RexglueInstallProblems($Layout, [string]$Mode) {
         $problems.Add("built from other inputs: $detail")
     }
     $stock = $Mode -eq 'stock'
-    foreach ($file in @(Get-RexglueManagedFiles)) {
+    foreach ($file in @(Get-RexglueManagedFiles $Layout.Config)) {
         $name = $file.Leaf.Replace('/', '\')
         $path = Join-Path $Layout.SdkDir $file.Leaf
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $problems.Add("missing: $name"); continue }
@@ -130,7 +131,6 @@ function Get-RexglueInstallProblems($Layout, [string]$Mode) {
         if ($hash -ne $stamp.Files[$file.Leaf]) { $problems.Add("$name was replaced or modified after it was installed") }
         $isStock = $hash -eq $Layout.Baseline["SHA256_$($file.Leaf)"]
         if ($stock -and -not $isStock) { $problems.Add("$name is not the stock release file") }
-        # The GPU plugin has no patch of its own yet, so only the runtime must differ from stock.
         if (-not $stock -and $file.IsRuntime -and $isStock) { $problems.Add("$name is the stock release file") }
     }
     return $problems.ToArray()
@@ -154,7 +154,7 @@ function Install-StockRexglueRuntime($Layout) {
     Remove-Item -LiteralPath $Layout.StampFile -ErrorAction SilentlyContinue
     $archive = [IO.Compression.ZipFile]::OpenRead($Layout.SdkZip)
     try {
-        foreach ($file in @(Get-RexglueManagedFiles)) {
+        foreach ($file in @(Get-RexglueManagedFiles $Layout.Config)) {
             $dest = Join-Path $Layout.SdkDir $file.Leaf
             $stock = $Layout.Baseline["SHA256_$($file.Leaf)"]
             if ((Test-Path -LiteralPath $dest -PathType Leaf) -and (Get-FileSha256 $dest) -eq $stock) { continue }
@@ -182,7 +182,7 @@ function Update-RexglueRuntime($Layout, [int]$Jobs = 0) {
         if ($mode -eq 'patched') {
             Write-Host 'Rebuilding the ReXGlue runtime and GPU plugin from patches\rexglue-sdk...'
             $builder = Join-Path $Layout.Root 'tools\build-patched-rexruntime.ps1'
-            $builderArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $builder)
+            $builderArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $builder, '-Config', $Layout.Config)
             if ($Jobs -gt 0) { $builderArgs += @('-Jobs', $Jobs) }
             & (Get-Process -Id $PID).Path @builderArgs
             if ($LASTEXITCODE) { throw "Building the patched ReXGlue runtime failed ($LASTEXITCODE)" }

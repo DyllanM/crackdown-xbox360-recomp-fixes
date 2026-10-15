@@ -54,8 +54,31 @@ function Get-CodegenInputItems([string]$Root) {
     return $items
 }
 
+# The patches in patches\rexglue-sdk that change the codegen tool, in ordinal name order.
+function Get-CodegenPatches([string]$Root) {
+    $dir = Join-Path $Root 'patches\rexglue-sdk'
+    $names = [string[]]@(Get-ChildItem -LiteralPath $dir -Filter '*.patch' -File |
+        Where-Object { Select-String -LiteralPath $_.FullName -Pattern '^diff --git a/src/codegen/' -Quiet } |
+        ForEach-Object { $_.Name })
+    [Array]::Sort($names, [StringComparer]::Ordinal)
+    return @($names | ForEach-Object { [pscustomobject]@{ Name = $_; Path = Join-Path $dir $_ } })
+}
+
+# 'stock', or a name for the codegen tool built from the codegen patches.
+function Get-CodegenToolIdentity([string]$Root) {
+    $patches = @(Get-CodegenPatches $Root)
+    if (-not $patches.Count) { return 'stock' }
+    $lines = @($patches | ForEach-Object { "$($_.Name)=$(Get-FileSha256 $_.Path)" })
+    return 'patched-' + (Get-TextSha256 ($lines -join "`n")).Substring(0, 12).ToLowerInvariant()
+}
+
+function Get-PatchedCodegenPath([string]$Root, [string]$Identity) {
+    return Join-Path $Root "out\rexglue-codegen\$Identity\rexglue.exe"
+}
+
 function Get-CodegenInputStamp([string]$Root, [string]$SdkVersion) {
-    $lines = @("rexglue  $SdkVersion")
+    $tool = Get-CodegenToolIdentity $Root
+    $lines = @(if ($tool -eq 'stock') { "rexglue  $SdkVersion" } else { "rexglue  $SdkVersion $tool" })
     foreach ($item in @(Get-CodegenInputItems $Root)) {
         $hash = if (Test-Path -LiteralPath $item.Path -PathType Leaf) { Get-FileSha256 $item.Path } else { 'missing' }
         $lines += "$hash  $($item.Key)"

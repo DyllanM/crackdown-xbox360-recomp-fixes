@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Builds ReXGlue's rexruntime and Xenos GPU plugin from the pinned SDK source with the patches in
-  patches\rexglue-sdk, and installs them into tools\rexglue\win-amd64 for Debug, RelWithDebInfo and Release.
+  patches\rexglue-sdk, and installs the requested configuration into tools\rexglue\win-amd64.
 
 .DESCRIPTION
   tools\build.ps1 runs this by itself when the installed files are not current. Run it by hand only to diagnose
@@ -12,11 +12,15 @@
   .\tools\build-patched-rexruntime.ps1           # build and install the patched files
   .\tools\build-patched-rexruntime.ps1 -Check    # report whether the installed files are current
   .\tools\build-patched-rexruntime.ps1 -Restore  # put the stock release files back
+  .\tools\build-patched-rexruntime.ps1 -Codegen  # build the codegen tool from the codegen patches (tools\codegen.ps1 runs this)
 #>
 param(
     [string]$WorkDir,  # ReXGlue source and build folder; default: out\rexglue-sdk-src
     [switch]$Check,
     [switch]$Restore,
+    [switch]$Codegen,
+    [ValidateSet('Debug', 'RelWithDebInfo', 'Release')]
+    [string]$Config = 'RelWithDebInfo',
     [int]$Jobs = 0
 )
 $ErrorActionPreference = 'Stop'
@@ -24,7 +28,8 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'build-common.ps1')
 . (Join-Path $PSScriptRoot 'rexruntime-patch.ps1')
-$Layout = Get-RexglueLayout $Root
+. (Join-Path $PSScriptRoot 'codegen-inputs.ps1')
+$Layout = Get-RexglueLayout $Root $Config
 if (-not (Test-Path -LiteralPath $Layout.SdkConfigDir)) { throw 'Missing tools\rexglue (run tools\codegen.ps1 first)' }
 
 function Invoke-Native([string]$What, [scriptblock]$Command) {
@@ -77,7 +82,7 @@ function Build-RexglueRuntime($Layout, [string]$Src, $Toolchain, [int]$Jobs) {
                 "-DCMAKE_LINKER:FILEPATH=$($Toolchain.LldLink)" "-DCMAKE_MAKE_PROGRAM:FILEPATH=$($Toolchain.Ninja)" `
                 "-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags"
         }
-        foreach ($config in $RexglueRuntimeConfigs) {
+        foreach ($config in @($Layout.Config)) {
             Invoke-Native "ReXGlue build ($config)" {
                 & $Toolchain.CMake --build "out/build/$RexglueRuntimePreset" --config $config --target $RexglueRuntimeTargets @parallel
             }
@@ -85,10 +90,39 @@ function Build-RexglueRuntime($Layout, [string]$Src, $Toolchain, [int]$Jobs) {
     } finally { Pop-Location }
 }
 
+function Build-RexglueCodegen([string]$Src, $Toolchain, [int]$Jobs, [string]$Dest) {
+    $flags = "$RexglueRuntimeBuildFlags -ffile-prefix-map=$($Src.Replace('\', '/'))=."
+    $parallel = @(if ($Jobs -gt 0) { '--parallel', $Jobs } else { '--parallel' })
+    Push-Location $Src
+    try {
+        Invoke-Native 'ReXGlue configure' {
+            & $Toolchain.CMake --preset $RexglueRuntimePreset `
+                "-DCMAKE_C_COMPILER:FILEPATH=$($Toolchain.Clang)" "-DCMAKE_CXX_COMPILER:FILEPATH=$($Toolchain.ClangXX)" `
+                "-DCMAKE_LINKER:FILEPATH=$($Toolchain.LldLink)" "-DCMAKE_MAKE_PROGRAM:FILEPATH=$($Toolchain.Ninja)" `
+                "-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags"
+        }
+        Invoke-Native 'ReXGlue codegen build' {
+            & $Toolchain.CMake --build "out/build/$RexglueRuntimePreset" --config Release --target rexglue @parallel
+        }
+    } finally { Pop-Location }
+    $destDir = Split-Path $Dest
+    New-Item -ItemType Directory -Force $destDir | Out-Null
+    # rexglue.exe imports rexruntime.dll, so the matching build goes next to it. The exe goes last: it marks the install.
+    foreach ($name in @('rexruntime.dll', 'rexglue.exe')) {
+        $built = Join-Path $Src "out\win-amd64\Release\$name"
+        if (-not (Test-Path -LiteralPath $built -PathType Leaf)) { throw "ReXGlue build output is missing: $built" }
+        $target = Join-Path $destDir $name
+        Copy-Item -LiteralPath $built -Destination "$target.tmp" -Force
+        if ((Get-FileSha256 "$target.tmp") -ne (Get-FileSha256 $built)) { throw "The copy of $name does not match its build output" }
+        Move-InstalledFile "$target.tmp" $target
+    }
+    Write-Host "Patched ReXGlue codegen installed: $Dest"
+}
+
 # The build outputs of every managed file, checked against the stock files and for embedded build paths.
 function Get-RexglueBuiltFiles($Layout, [string]$Src) {
     $built = @{}
-    foreach ($file in @(Get-RexglueManagedFiles)) {
+    foreach ($file in @(Get-RexglueManagedFiles $Layout.Config)) {
         $path = Join-Path $Src ('out\win-amd64\{0}\{1}' -f $file.Config, (Split-Path $file.Leaf -Leaf))
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "ReXGlue build output is missing: $path" }
         $stock = $Layout.Baseline["SHA256_$($file.Leaf)"]
@@ -97,7 +131,7 @@ function Get-RexglueBuiltFiles($Layout, [string]$Src) {
         }
         $built[$file.Leaf] = $path
     }
-    foreach ($file in @(Get-RexglueManagedFiles | Where-Object { $_.Config -eq 'Release' -and $_.Leaf -like 'bin/*' })) {
+    foreach ($file in @(Get-RexglueManagedFiles $Layout.Config | Where-Object { $_.Config -eq 'Release' -and $_.Leaf -like 'bin/*' })) {
         $text = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($built[$file.Leaf]))
         foreach ($needle in @($Src, $Src.Replace('\', '/'))) {
             if ($text.IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
@@ -109,7 +143,7 @@ function Get-RexglueBuiltFiles($Layout, [string]$Src) {
 }
 
 function Install-RexglueRuntime($Layout, $Built, $Inputs) {
-    foreach ($file in @(Get-RexglueManagedFiles)) {
+    foreach ($file in @(Get-RexglueManagedFiles $Layout.Config)) {
         $dest = Join-Path $Layout.SdkDir $file.Leaf
         Copy-Item -LiteralPath $Built[$file.Leaf] -Destination "$dest.tmp" -Force
         if ((Get-FileSha256 "$dest.tmp") -ne (Get-FileSha256 $Built[$file.Leaf])) {
@@ -132,6 +166,18 @@ if ($Check) {
 }
 
 $patches = @(Get-RexglueRuntimePatches $Layout.PatchDir)
+$src = if (-not $WorkDir) { Join-Path $Root 'out\rexglue-sdk-src' } elseif ([IO.Path]::IsPathRooted($WorkDir)) { $WorkDir } else { Join-Path $Root $WorkDir }
+
+if ($Codegen) {
+    $identity = Get-CodegenToolIdentity $Root
+    if ($identity -eq 'stock') { throw 'No patch in patches\rexglue-sdk changes the codegen tool' }
+    $toolchain = Get-BuildToolchain
+    Import-BuildEnvironment $toolchain
+    Initialize-RexglueSource $Layout $src $patches
+    Build-RexglueCodegen $src $toolchain $Jobs (Get-PatchedCodegenPath $Root $identity)
+    exit 0
+}
+
 if ($Restore -or -not $patches.Count) {
     Install-StockRexglueRuntime $Layout
     exit 0
@@ -141,7 +187,6 @@ $toolchain = Get-BuildToolchain
 $inputs = Get-RexglueRuntimeInputs $Layout 'patched'
 Import-BuildEnvironment $toolchain
 Remove-Item -LiteralPath $Layout.StampFile -ErrorAction SilentlyContinue
-$src = if (-not $WorkDir) { Join-Path $Root 'out\rexglue-sdk-src' } elseif ([IO.Path]::IsPathRooted($WorkDir)) { $WorkDir } else { Join-Path $Root $WorkDir }
 Initialize-RexglueSource $Layout $src $patches
 Build-RexglueRuntime $Layout $src $toolchain $Jobs
 Install-RexglueRuntime $Layout (Get-RexglueBuiltFiles $Layout $src) $inputs

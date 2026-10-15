@@ -2,6 +2,7 @@
 .SYNOPSIS
   Downloads the pinned ReXGlue SDK, checks game\assets\Default.xex and
   generates the recompiled C++ sources into generated\default. This is the only entry point that regenerates them.
+  When a patch in patches\rexglue-sdk changes the codegen, it generates with a codegen tool built from the patches.
 #>
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -33,6 +34,17 @@ if ($installed -ne $sdkVersion) { throw "tools\rexglue has ReXGlue $installed; e
 if ((Get-FileSha256 $rexglue) -ne $baseline['SHA256_bin/rexglue.exe']) {
     throw "$rexglue is not the stock ReXGlue $sdkVersion codegen (delete tools\rexglue to re-download)"
 }
+$codegenTool = Get-CodegenToolIdentity $root
+if ($codegenTool -ne 'stock') {
+    $rexglue = Get-PatchedCodegenPath $root $codegenTool
+    $runtime = Join-Path (Split-Path $rexglue) 'rexruntime.dll'
+    if (-not (Test-Path -LiteralPath $rexglue -PathType Leaf) -or -not (Test-Path -LiteralPath $runtime -PathType Leaf)) {
+        Write-Host "Building the ReXGlue codegen from patches\rexglue-sdk ($codegenTool)..."
+        & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'build-patched-rexruntime.ps1') -Codegen
+        if ($LASTEXITCODE) { throw "Building the patched ReXGlue codegen failed ($LASTEXITCODE)" }
+    }
+    Write-Host "Using the patched ReXGlue codegen ($codegenTool)."
+}
 
 if (-not (Test-Path $xex)) { throw "Missing $xex (copy the disc contents into game\assets first)" }
 $hash = Get-FileSha256 $xex
@@ -45,7 +57,8 @@ try {
     # rexglue logs to stderr; in Windows PowerShell 5.1 that would trip 'Stop', so judge by exit code.
     $ErrorActionPreference = 'Continue'
     $timer = [Diagnostics.Stopwatch]::StartNew()
-    & $rexglue codegen crackdown_manifest.toml 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $log
+    # ReXGlue's module fingerprint excludes the codegen binary, so a patched codegen would otherwise be skipped.
+    & $rexglue codegen --ignore-stamp crackdown_manifest.toml 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $log
     $exitCode = $LASTEXITCODE
     Write-Host ("codegen exit code {0} after {1:N1} s (log: {2})" -f $exitCode, $timer.Elapsed.TotalSeconds, $log)
     if ($exitCode -ne 0) { throw "codegen failed ($exitCode)" }

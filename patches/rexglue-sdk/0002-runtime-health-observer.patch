@@ -1,0 +1,607 @@
+diff --git a/include/rex/logging/api.h b/include/rex/logging/api.h
+--- a/include/rex/logging/api.h
++++ b/include/rex/logging/api.h
+@@ -28,6 +28,18 @@
+ REXCVAR_DECLARE(int32_t, log_max_files);
+ 
+ namespace rex {
++
++// Temporary runtime diagnostics observer; callbacks must not throw or retain detail pointers.
++
++#define REX_RUNTIME_OBSERVER_API 1
++using RuntimeObserver = void (*)(const char*, const char*, uint64_t, uint64_t, uint64_t,
++                                uint64_t, uint64_t, const char*, uint32_t, uint32_t);
++void SetRuntimeObserver(RuntimeObserver observer);
++bool RuntimeObserverActive();
++void ObserveRuntime(const char* category, const char* event, uint64_t object = 0,
++                    uint64_t a = 0, uint64_t b = 0, uint64_t c = 0, uint64_t d = 0,
++                    const char* detail = nullptr);
++
+ 
+ /* =========================================================================
+    Log Level Guidelines
+diff --git a/src/core/logging.cpp b/src/core/logging.cpp
+--- a/src/core/logging.cpp
++++ b/src/core/logging.cpp
+@@ -10,6 +10,8 @@
+  */
+ 
+ #include <algorithm>
++#include <atomic>
++#include <rex/system/thread_state.h>
+ #include <cctype>
+ #include <charconv>
+ #include <filesystem>
+@@ -57,6 +59,25 @@
+     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+ 
+ namespace rex {
++
++namespace { std::atomic<RuntimeObserver> runtime_observer{nullptr}; }
++
++void SetRuntimeObserver(RuntimeObserver observer) {
++  runtime_observer.store(observer, std::memory_order_release);
++}
++
++bool RuntimeObserverActive() { return runtime_observer.load(std::memory_order_acquire) != nullptr; }
++
++void ObserveRuntime(const char* category, const char* event, uint64_t object,
++                    uint64_t a, uint64_t b, uint64_t c, uint64_t d, const char* detail) {
++  auto observer = runtime_observer.load(std::memory_order_acquire);
++  if (!observer) return;
++  auto* thread = runtime::ThreadState::Get();
++  const uint32_t caller = thread && thread->context() ? uint32_t(thread->context()->lr) : 0;
++  observer(category, event, object, a, b, c, d, detail, caller,
++           thread ? thread->thread_id() : 0);
++}
++
+ 
+ namespace {
+ 
+diff --git a/include/rex/hook.h b/include/rex/hook.h
+--- a/include/rex/hook.h
++++ b/include/rex/hook.h
+@@ -52,19 +52,22 @@
+ #define REX_STUB(subroutine)              \
+   extern "C" REX_FUNC(subroutine) {       \
+     (void)base;                           \
+-    REXKRNL_WARN("{} STUB", #subroutine); \
++    rex::ObserveRuntime("KERNEL", "stub", ctx.r3.u32, ctx.r3.u32, 0, 0, 0, #subroutine); \
++    if (!rex::RuntimeObserverActive()) REXKRNL_WARN("{} STUB", #subroutine); \
+   }
+ 
+ #define REX_STUB_LOG(subroutine, msg)               \
+   extern "C" REX_FUNC(subroutine) {                 \
+     (void)base;                                     \
+-    REXKRNL_WARN("{} STUB - {}", #subroutine, msg); \
++    rex::ObserveRuntime("KERNEL", "stub", ctx.r3.u32, ctx.r3.u32, 0, 0, 0, #subroutine); \
++    if (!rex::RuntimeObserverActive()) REXKRNL_WARN("{} STUB", #subroutine); \
+   }
+ 
+ #define REX_STUB_RETURN(subroutine, value)                                                \
+   extern "C" REX_FUNC(subroutine) {                                                       \
+     (void)base;                                                                           \
+-    REXKRNL_WARN("{} STUB - returning {:#x}", #subroutine, static_cast<uint32_t>(value)); \
++    rex::ObserveRuntime("KERNEL", "stub_return", ctx.r3.u32, uint32_t(value), 0, 0, 0, #subroutine); \
++    if (!rex::RuntimeObserverActive()) REXKRNL_WARN("{} STUB", #subroutine); \
+     ctx.r3.u64 = (value);                                                                 \
+   }
+ 
+diff --git a/src/audio/audio_system.cpp b/src/audio/audio_system.cpp
+--- a/src/audio/audio_system.cpp
++++ b/src/audio/audio_system.cpp
+@@ -109,6 +109,7 @@
+     auto result = rex::thread::WaitAny(wait_handles_, rex::countof(wait_handles_), true,
+                                        std::chrono::milliseconds(500));
+     if (result.first == rex::thread::WaitResult::kFailed) {
++      ObserveRuntime("THREAD", "audio_wait_failed", 0, uint64_t(result.first));
+       REXAPU_WARN("AudioWorker: WaitAny failed");
+       continue;
+     }
+@@ -140,6 +141,7 @@
+       global_lock.unlock();
+ 
+       if (client_callback) {
++        ObserveRuntime("AUDIO", "pump_begin", index, client_callback, client_callback_arg);
+         if (diag_pump_count < 10) {
+           REXAPU_DEBUG("AudioWorker: dispatching callback {:08X} with arg {:08X} for client {}",
+                        client_callback, client_callback_arg, index);
+@@ -151,6 +153,7 @@
+         if (diag_pump_count < 10) {
+           REXAPU_DEBUG("AudioWorker: callback returned for client {}", index);
+         }
++        ObserveRuntime("AUDIO", "pump_end", index);
+         diag_pump_count++;
+       } else {
+         REXAPU_DEBUG("AudioWorker: semaphore signaled for client {} but callback is 0", index);
+@@ -218,6 +221,7 @@
+   // callback threads) before the semaphores they reference are destroyed.
+   for (size_t i = 0; i < kMaximumClientCount; i++) {
+     if (clients_[i].in_use) {
++      ObserveRuntime("AUDIO", "source_destroyed", i);
+       DestroyDriver(clients_[i].driver);
+       if (clients_[i].wrapped_callback_arg) {
+         memory()->SystemHeapFree(clients_[i].wrapped_callback_arg);
+@@ -252,6 +256,7 @@
+   memory::store_and_swap<uint32_t>(memory()->TranslateVirtual(ptr), callback_arg);
+ 
+   clients_[index] = {driver, callback, callback_arg, ptr, true};
++  ObserveRuntime("AUDIO", "source_created", index, callback, callback_arg);
+ 
+   if (out_index) {
+     *out_index = index;
+@@ -281,6 +286,7 @@
+ 
+   auto global_lock = global_critical_region_.Acquire();
+   assert_true(index < kMaximumClientCount);
++  ObserveRuntime("AUDIO", "source_destroyed", index);
+   DestroyDriver(clients_[index].driver);
+   memory()->SystemHeapFree(clients_[index].wrapped_callback_arg);
+   clients_[index] = {nullptr, 0, 0, 0, false};
+@@ -372,6 +378,7 @@
+     return;
+   }
+   paused_ = true;
++  ObserveRuntime("AUDIO", "paused");
+ 
+   // Kind of a hack, but it works.
+   shutdown_event_->Set();
+@@ -385,6 +392,7 @@
+     return;
+   }
+   paused_ = false;
++  ObserveRuntime("AUDIO", "resumed");
+ 
+   resume_event_->Set();
+ 
+diff --git a/src/audio/sdl/sdl_audio_driver.cpp b/src/audio/sdl/sdl_audio_driver.cpp
+--- a/src/audio/sdl/sdl_audio_driver.cpp
++++ b/src/audio/sdl/sdl_audio_driver.cpp
+@@ -12,6 +12,8 @@
+ #include <algorithm>
+ #include <array>
+ #include <cstring>
++#include <cmath>
++#include <bit>
+ 
+ #include <rex/assert.h>
+ #include <rex/audio/conversion.h>
+@@ -51,6 +53,7 @@
+ 
+   SDL_AudioSpec desired_spec = {};
+   SDL_AudioSpec obtained_spec = {};
++  int device_buffer_frames = 0;
+   desired_spec.freq = frame_frequency_;
+   desired_spec.format = SDL_AUDIO_F32LE;
+   desired_spec.channels = frame_channels_;
+@@ -68,7 +71,7 @@
+     return false;
+   }
+ 
+-  if (!SDL_GetAudioDeviceFormat(sdl_device, &obtained_spec, NULL)) {
++  if (!SDL_GetAudioDeviceFormat(sdl_device, &obtained_spec, &device_buffer_frames)) {
+     REXAPU_WARN("SDL_GetAudioDeviceFormat() failed: {}", SDL_GetError());
+     obtained_spec = desired_spec;
+   }
+@@ -106,6 +109,10 @@
+     return false;
+   }
+ 
++  ObserveRuntime("AUDIO", "device_open", reinterpret_cast<uintptr_t>(this),
++                 obtained_spec.freq, obtained_spec.channels, sdl_device_channels_,
++                 obtained_spec.format, device_name);
++  ObserveRuntime("AUDIO", "device_buffer", reinterpret_cast<uintptr_t>(this), device_buffer_frames);
+   return true;
+ }
+ 
+@@ -123,22 +130,40 @@
+   }
+ 
+   std::memcpy(output_frame, input_frame, frame_samples_ * sizeof(float));
+-
+-  static uint32_t sdl_submit_count = 0;
+-  if (sdl_submit_count < 10) {
+-    REXAPU_DEBUG("SDLAudioDriver::SubmitFrame: frame_ptr={:08X} queued_count={}", frame_ptr,
+-                 frames_queued_.size() + 1);
+-    sdl_submit_count++;
+-  }
++  uint64_t active = 0, invalid = 0;
++  float peak = 0;
++  std::array<uint64_t,6> invalid_channels{}, nan_channels{};
++  std::array<uint32_t,6> first_invalid_bits{};
++  for (uint32_t i = 0; i < frame_samples_; ++i) {
++    uint32_t bits;
++    std::memcpy(&bits, output_frame + i, sizeof(bits));
++    const float value = std::bit_cast<float>(std::byteswap(bits));
++    if (!std::isfinite(value)) {
++      const size_t channel = i / channel_samples_;
++      ++invalid; ++invalid_channels[channel]; nan_channels[channel] += std::isnan(value);
++      if (!first_invalid_bits[channel]) first_invalid_bits[channel] = std::byteswap(bits);
++      continue;
++    }
++    active += std::abs(value) > 0.00001f;
++    peak = std::max(peak, std::abs(value));
++  }
++  for (size_t channel=0;channel<6;++channel)
++    ObserveRuntime("AUDIO", "mixer_channel", reinterpret_cast<uintptr_t>(this), channel,
++                   invalid_channels[channel], nan_channels[channel], first_invalid_bits[channel]);
++  ObserveRuntime("AUDIO", "mixer_pcm", reinterpret_cast<uintptr_t>(this), active,
++                 uint64_t(std::min(double(peak), 1.0e6) * 1.0e6), invalid);
+ 
+   {
+     std::unique_lock<std::mutex> guard(frames_mutex_);
+     frames_queued_.push(output_frame);
++    ObserveRuntime("AUDIO", "buffer_submitted", reinterpret_cast<uintptr_t>(this),
++                   frame_ptr, frames_queued_.size());
+     PROFILE_BUFFER_QUEUE_DEPTH(static_cast<int64_t>(frames_queued_.size()));
+   }
+ }
+ 
+ void SDLAudioDriver::Shutdown() {
++  ObserveRuntime("AUDIO", "device_closed", reinterpret_cast<uintptr_t>(this));
+   if (sdl_stream_) {
+     SDL_DestroyAudioStream(sdl_stream_);
+     sdl_stream_ = nullptr;
+@@ -178,6 +203,11 @@
+   const StereoFold fold = GetStereoFold();
+   const SurroundMix mix = GetSurroundMix();
+   const float gain = GetOutputGain();
++  const bool muted = REXCVAR_GET(audio_mute);
++  ObserveRuntime("AUDIO", "callback", reinterpret_cast<uintptr_t>(driver),
++                 uint64_t(std::max(additional_amount, 0)) / (sizeof(float) * driver->sdl_device_channels_),
++                 SDL_GetAudioStreamQueued(stream), SDL_AudioDevicePaused(SDL_GetAudioStreamDevice(stream)),
++                 (uint64_t(muted) << 32) | uint32_t(gain * 1000));
+   while (additional_amount > 0) {
+     static uint32_t sdl_callback_count = 0;
+     std::unique_lock<std::mutex> guard(driver->frames_mutex_);
+@@ -186,8 +216,10 @@
+         REXAPU_DEBUG("SDLCallback: no frames queued (silence)");
+         sdl_callback_count++;
+       }
++      ObserveRuntime("AUDIO", "underrun", reinterpret_cast<uintptr_t>(driver));
+       std::memset(data, 0, len);
+       if (!SDL_PutAudioStreamData(stream, data, len)) {
++        ObserveRuntime("AUDIO", "device_error", reinterpret_cast<uintptr_t>(driver), 0, 0, 0, 0, SDL_GetError());
+         REXAPU_ERROR("SDL_PutAudioStreamData() failed while filling silence: {}", SDL_GetError());
+         break;
+       }
+@@ -195,7 +227,7 @@
+     } else {
+       auto buffer = driver->frames_queued_.front();
+       driver->frames_queued_.pop();
+-      if (REXCVAR_GET(audio_mute)) {
++      if (muted) {
+         std::memset(data, 0, len);
+       } else {
+         switch (driver->sdl_device_channels_) {
+@@ -212,14 +244,43 @@
+             break;
+         }
+       }
+-      if (!SDL_PutAudioStreamData(stream, data, len)) {
++      uint64_t nonzero = 0, invalid = 0;
++      double energy = 0, sum = 0;
++      uint64_t clipped = 0;
++      float peak = 0;
++      for (int i = 0; i < sample_count; ++i) {
++        if (!std::isfinite(data[i])) { ++invalid; continue; }
++        const float magnitude = std::abs(data[i]);
++        nonzero += magnitude > 0.00001f;
++        peak = std::max(peak, magnitude);
++        energy += double(data[i]) * data[i]; sum += data[i]; clipped += magnitude >= 1.0f;
++      }
++      const bool submitted = SDL_PutAudioStreamData(stream, data, len);
++      ObserveRuntime("AUDIO", "pcm", reinterpret_cast<uintptr_t>(driver),
++                     submitted ? channel_samples_ : 0, nonzero,
++                     uint64_t(std::min(double(peak), 1.0e6) * 1.0e6),
++                     (uint64_t(invalid != 0) << 63) |
++                         uint64_t(std::min(std::sqrt(energy / sample_count), 1.0e6) * 1.0e6));
++      ObserveRuntime("AUDIO", "pcm_shape", reinterpret_cast<uintptr_t>(driver),
++                     clipped, sample_count, uint64_t(int64_t(sum / sample_count * 1.0e6)),
++                     std::bit_cast<uint32_t>(data[0]));
++      if (!submitted) {
++        ObserveRuntime("AUDIO", "device_error", reinterpret_cast<uintptr_t>(driver), 0, 0, 0, 0, SDL_GetError());
+         REXAPU_ERROR("SDL_PutAudioStreamData() failed: {}", SDL_GetError());
+         driver->frames_unused_.push(buffer);
++        ObserveRuntime("AUDIO", "buffer_discarded", reinterpret_cast<uintptr_t>(driver),
++                       driver->frames_queued_.size());
++        // A dequeued frame returns its producer credit even if the device rejects it.
++        const bool released = driver->semaphore_->Release(1, nullptr);
++        if (!released) ObserveRuntime("THREAD", "audio_semaphore_failed", reinterpret_cast<uintptr_t>(driver));
+         break;
+       }
+       driver->frames_unused_.push(buffer);
+ 
++      ObserveRuntime("AUDIO", "buffer_completed", reinterpret_cast<uintptr_t>(driver),
++                     driver->frames_queued_.size());
+       auto ret = driver->semaphore_->Release(1, nullptr);
++      if (!ret) ObserveRuntime("THREAD", "audio_semaphore_failed", reinterpret_cast<uintptr_t>(driver));
+       assert_true(ret);
+       additional_amount -= len;
+     }
+diff --git a/src/audio/xma_context.cpp b/src/audio/xma_context.cpp
+--- a/src/audio/xma_context.cpp
++++ b/src/audio/xma_context.cpp
+@@ -104,6 +104,8 @@
+   XMA_CONTEXT_DATA data(context_ptr);
+   const XMA_CONTEXT_DATA initial_data = data;
+ 
++  ObserveRuntime("XMA", "work", guest_ptr(), data.input_buffer_0_valid,
++                 data.input_buffer_1_valid, data.output_buffer_valid, data.error_status);
+   if (!data.output_buffer_valid) {
+     return true;
+   }
+@@ -128,6 +130,8 @@
+       static_cast<int32_t>(effective_sdc) + data.output_buffer_padding;
+ 
+   if (minimum_subframe_decode_count > remaining_subframe_blocks_in_output_buffer_) {
++    ObserveRuntime("XMA", "output_full", guest_ptr(), minimum_subframe_decode_count,
++                   remaining_subframe_blocks_in_output_buffer_);
+     StoreContextMerged(data, initial_data, context_ptr);
+     return true;
+   }
+@@ -142,6 +146,8 @@
+   }
+ 
+   data.output_buffer_write_offset = output_rb.write_offset() / kOutputBytesPerBlock;
++  ObserveRuntime("XMA", "output", guest_ptr(), initial_data.output_buffer_write_offset,
++                 data.output_buffer_write_offset, data.output_buffer_read_offset, data.error_status);
+ 
+   if (output_rb.empty()) {
+     data.output_buffer_valid = 0;
+@@ -154,6 +160,7 @@
+ void XmaContext::Enable() {
+   std::lock_guard<std::mutex> lock(lock_);
+   set_is_enabled(true);
++  ObserveRuntime("XMA", "enabled", guest_ptr());
+ }
+ 
+ bool XmaContext::Block(bool poll) {
+@@ -213,6 +220,7 @@
+ 
+ void XmaContext::Disable() {
+   std::lock_guard<std::mutex> lock(lock_);
++  ObserveRuntime("XMA", "disabled", guest_ptr());
+   set_is_enabled(false);
+ }
+ 
+@@ -505,13 +513,16 @@
+ bool XmaContext::DecodePacket(AVCodecContext* av_context, const AVPacket* av_packet,
+                               AVFrame* av_frame) {
+   auto ret = avcodec_send_packet(av_context, av_packet);
++  ObserveRuntime("XMA", "packet", guest_ptr(), av_packet->size, uint32_t(ret));
+   if (ret < 0) {
+     char errbuf[AV_ERROR_MAX_STRING_SIZE];
+     av_strerror(ret, errbuf, sizeof(errbuf));
++    ObserveRuntime("XMA", "decode_error", guest_ptr(), uint32_t(ret));
+     REXAPU_ERROR("XmaContext {}: Error sending packet for decoding: {} ({})", id(), errbuf, ret);
+     return false;
+   }
+   ret = avcodec_receive_frame(av_context, av_frame);
++  ObserveRuntime("XMA", "decode", guest_ptr(), uint32_t(ret), ret >= 0 ? av_frame->nb_samples : 0);
+ 
+   if (ret == AVERROR(EAGAIN)) {
+     return false;
+@@ -519,6 +530,7 @@
+   if (ret < 0) {
+     char errbuf[AV_ERROR_MAX_STRING_SIZE];
+     av_strerror(ret, errbuf, sizeof(errbuf));
++    ObserveRuntime("XMA", "decode_error", guest_ptr(), uint32_t(ret));
+     REXAPU_ERROR("XmaContext {}: Error during decoding: {} ({})", id(), errbuf, ret);
+     return false;
+   }
+diff --git a/src/audio/xma_decoder.cpp b/src/audio/xma_decoder.cpp
+--- a/src/audio/xma_decoder.cpp
++++ b/src/audio/xma_decoder.cpp
+@@ -206,13 +206,14 @@
+ uint32_t XmaDecoder::AllocateContext() {
+   size_t index = context_bitmap_.Acquire();
+   if (index == -1) {
+-    // Out of contexts.
++    ObserveRuntime("XMA", "pool_exhausted");
+     return 0;
+   }
+ 
+   XmaContext& context = contexts_[index];
+   assert_false(context.is_allocated());
+   context.set_is_allocated(true);
++  ObserveRuntime("XMA", "created", context.guest_ptr(), index);
+   return context.guest_ptr();
+ }
+ 
+@@ -222,6 +223,7 @@
+ 
+   XmaContext& context = contexts_[context_id];
+   assert_true(context.is_allocated());
++  ObserveRuntime("XMA", "released", guest_ptr, context_id);
+   context.Release();
+   context_bitmap_.Release(context_id);
+ }
+diff --git a/src/system/function_dispatcher.cpp b/src/system/function_dispatcher.cpp
+--- a/src/system/function_dispatcher.cpp
++++ b/src/system/function_dispatcher.cpp
+@@ -35,6 +35,7 @@
+ }  // namespace
+ 
+ static void InvalidFunctionTrap(PPCContext& ctx, uint8_t* /*base*/) {
++  ObserveRuntime("FAULT", "invalid_function", ctx.last_indirect_target, ctx.lr, ctx.r1.u32);
+   REX_FATAL("Call to invalid or unregistered function at guest address 0x{:08X}",
+             ctx.last_indirect_target);
+ }
+@@ -63,6 +64,7 @@
+ 
+   PPCFunc* fn = GetFunction(address);
+   if (!fn) {
++    ObserveRuntime("FAULT", "invalid_execute", address);
+     REXCPU_ERROR("Execute({:08X}): function not in function table", address);
+     return false;
+   }
+diff --git a/src/filesystem/virtual_file_system.cpp b/src/filesystem/virtual_file_system.cpp
+--- a/src/filesystem/virtual_file_system.cpp
++++ b/src/filesystem/virtual_file_system.cpp
+@@ -120,11 +120,12 @@
+     return rex::string::utf8_starts_with_case(normalized_path, d->mount_path());
+   });
+   if (it == devices_.cend()) {
+-    REXFS_WARN("VFS: '{}' -> [no device]", path);
++    ObserveRuntime("VFS", "probe_no_device", 0, 0, 0, 0, 0, std::string(path).c_str());
++    if (!RuntimeObserverActive()) REXFS_WARN("VFS: '{}' -> [no device]", path);
+     // Supress logging the error for ShaderDumpxe:\CompareBackEnds as this is
+     // not an actual problem nor something we care about.
+     if (path != "ShaderDumpxe:\\CompareBackEnds") {
+-      REXFS_ERROR("ResolvePath({}) failed - device not found", path);
++      if (!RuntimeObserverActive()) REXFS_ERROR("ResolvePath({}) failed - device not found", path);
+     }
+     return nullptr;
+   }
+@@ -150,6 +151,8 @@
+     }
+   }
+ 
++  ObserveRuntime("VFS", entry ? "probe_found" : "probe_missing", 0, 0, 0, 0, 0,
++                 std::string(path).c_str());
+   return entry;
+ }
+ 
+@@ -196,6 +199,13 @@
+                                      FileDisposition creation_disposition, uint32_t desired_access,
+                                      bool is_directory, bool is_non_directory, File** out_file,
+                                      FileAction* out_action) {
++  const std::string audit_path(path);
++  const auto audit_result = [&](X_STATUS status) {
++    ObserveRuntime("VFS", "open_result", reinterpret_cast<uintptr_t>(root_entry),
++                   status, uint32_t(creation_disposition), is_directory, is_non_directory,
++                   audit_path.c_str());
++    return status;
++  };
+   // TODO(gibbed): should 'is_directory' remain as a bool or should it be
+   // flipped to a generic FileAttributeFlags?
+ 
+@@ -220,7 +230,7 @@
+     parent_entry = !root_entry ? ResolvePath(base_path) : root_entry->ResolvePath(base_path);
+     if (!parent_entry) {
+       *out_action = FileAction::kDoesNotExist;
+-      return X_STATUS_NO_SUCH_FILE;
++      return audit_result(X_STATUS_NO_SUCH_FILE);
+     }
+ 
+     auto file_name = rex::string::utf8_find_name_from_guest_path(path);
+@@ -231,7 +241,7 @@
+ 
+   if (entry) {
+     if (entry->attributes() & kFileAttributeDirectory && is_non_directory) {
+-      return X_STATUS_FILE_IS_A_DIRECTORY;
++      return audit_result(X_STATUS_FILE_IS_A_DIRECTORY);
+     }
+ 
+     // If the cached entry does not exist on host anymore, invalidate it.
+@@ -254,14 +264,14 @@
+       // Must exist.
+       if (!entry) {
+         *out_action = FileAction::kDoesNotExist;
+-        return X_STATUS_NO_SUCH_FILE;
++        return audit_result(X_STATUS_NO_SUCH_FILE);
+       }
+       break;
+     case FileDisposition::kCreate:
+       // Must not exist.
+       if (entry) {
+         *out_action = FileAction::kExists;
+-        return X_STATUS_OBJECT_NAME_COLLISION;
++        return audit_result(X_STATUS_OBJECT_NAME_COLLISION);
+       }
+       break;
+     default:
+@@ -290,11 +300,11 @@
+       case FileDisposition::kCreate:
+         // Shouldn't be possible to hit this.
+         assert_always();
+-        return X_STATUS_ACCESS_DENIED;
++        return audit_result(X_STATUS_ACCESS_DENIED);
+       case FileDisposition::kSuperscede:
+         // Replace (by delete + recreate).
+         if (!entry->Delete()) {
+-          return X_STATUS_ACCESS_DENIED;
++          return audit_result(X_STATUS_ACCESS_DENIED);
+         }
+         entry = nullptr;
+         *out_action = FileAction::kSuperseded;
+@@ -311,7 +321,7 @@
+         if (entry->Delete()) {
+           entry = nullptr;
+         } else if (!entry->Truncate()) {
+-          return X_STATUS_ACCESS_DENIED;
++          return audit_result(X_STATUS_ACCESS_DENIED);
+         }
+         *out_action = FileAction::kOverwritten;
+         break;
+@@ -321,7 +331,7 @@
+     // Create if needed (either new or as a replacement).
+     entry = CreatePath(path, !is_directory ? kFileAttributeNormal : kFileAttributeDirectory);
+     if (!entry) {
+-      return X_STATUS_ACCESS_DENIED;
++      return audit_result(X_STATUS_ACCESS_DENIED);
+     }
+   }
+ 
+@@ -330,7 +340,7 @@
+   if (XFAILED(result)) {
+     *out_action = FileAction::kDoesNotExist;
+   }
+-  return result;
++  return audit_result(result);
+ }
+ 
+ }  // namespace rex::filesystem
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_io.cpp b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+--- a/src/kernel/xboxkrnl/xboxkrnl_io.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+@@ -747,14 +747,14 @@
+ }
+ 
+ u32 StfsCreateDevice_entry(mapped_void device_object, u32 flags, mapped_u32 out_device) {
+-  REXKRNL_WARN("StfsCreateDevice - stub");
++  ObserveRuntime("KERNEL", "stub_return", 0, X_STATUS_SUCCESS, 0, 0, 0, "StfsCreateDevice");
+   // if (out_device) *out_device = 0;
+   return X_STATUS_SUCCESS;
+ }
+ 
+ u32 StfsControlDevice_entry(mapped_void device_object, u32 ioctl, mapped_void input_buffer,
+                             u32 input_length, mapped_void output_buffer, u32 output_length) {
+-  REXKRNL_WARN("StfsControlDevice({:#x}) - stub", (uint32_t)ioctl);
++  ObserveRuntime("KERNEL", "stub_return", 0, X_STATUS_SUCCESS, uint32_t(ioctl), 0, 0, "StfsControlDevice");
+   return X_STATUS_SUCCESS;
+ }
+ 
+diff --git a/src/graphics/util/draw.cpp b/src/graphics/util/draw.cpp
+--- a/src/graphics/util/draw.cpp
++++ b/src/graphics/util/draw.cpp
+@@ -902,12 +902,9 @@
+   xenos::CopySampleSelect sample_select = SanitizeCopySampleSelect(
+       rb_copy_control.copy_sample_select, rb_surface_info.msaa_samples, is_depth);
+   if (rb_copy_control.copy_sample_select != sample_select) {
+-    REXGPU_WARN(
+-        "Incorrect resolve sample selected for {}-sample {}: {}, treating like "
+-        "{}",
+-        1 << uint32_t(rb_surface_info.msaa_samples), is_depth ? "depth" : "color",
+-        static_cast<uint32_t>(rb_copy_control.copy_sample_select),
+-        static_cast<uint32_t>(sample_select));
++    ObserveRuntime("GPU", "invalid_resolve", is_depth,
++                   1 << uint32_t(rb_surface_info.msaa_samples),
++                   uint32_t(rb_copy_control.copy_sample_select), uint32_t(sample_select));
+   }
+   info_out.copy_dest_coordinate_info.copy_sample_select = sample_select;
+   // Get the format to pass to the shader in a unified way - for depth (for
+diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
+--- a/src/graphics/command_processor.cpp
++++ b/src/graphics/command_processor.cpp
+@@ -1381,6 +1381,9 @@
+       draw_succeeded = IssueDraw(vgt_draw_initiator.prim_type, vgt_draw_initiator.num_indices,
+                                  is_indexed ? &index_buffer_info : nullptr, major_mode_explicit);
+       if (!draw_succeeded) {
++        ObserveRuntime("GPU", "draw_rejected", 0,
++                       uint32_t(vgt_draw_initiator.prim_type), vgt_draw_initiator.num_indices,
++                       uint32_t(vgt_draw_initiator.source_select));
+         auto vgt_output_path_cntl = register_file_->Get<reg::VGT_OUTPUT_PATH_CNTL>();
+         auto vgt_hos_cntl = register_file_->Get<reg::VGT_HOS_CNTL>();
+         auto rb_modecontrol = register_file_->Get<reg::RB_MODECONTROL>();

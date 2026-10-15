@@ -8,6 +8,7 @@
   .\tools\build.ps1              # incremental build only
   .\tools\build.ps1 -Clean       # clean configure and build
   .\tools\build.ps1 -Run         # build, then launch the game
+  .\tools\build.ps1 -Run -NoIntro  # DEBUG_SAULO: launch without the startup logo movies
   .\tools\build.ps1 -Clean -Run
   .\tools\build.ps1 -Config Release -BuildDir build-release   # separate tree
 
@@ -16,6 +17,7 @@ Exit codes: 0 success, 1 configure, build or runtime check failed, 2 a prerequis
 param(
     [switch]$Clean,
     [switch]$Run,
+    [switch]$NoIntro,  # DEBUG_SAULO: temporary, launches with --debug_saulo_no_intro=true
     [ValidateSet('Debug', 'RelWithDebInfo', 'Release')]
     [string]$Config = 'RelWithDebInfo',
     [int]$Jobs = 0,
@@ -31,7 +33,7 @@ $BuildDir = if (-not $BuildDir) { Join-Path $Root 'build' } elseif ([IO.Path]::I
 $GameData = Join-Path $Root 'game\assets'
 $UserData = Join-Path $BuildDir 'user_data'
 $Exe = Join-Path $BuildDir 'crackdown.exe'
-$Layout = Get-RexglueLayout $Root
+$Layout = Get-RexglueLayout $Root $Config
 $SdkVersion = $Layout.Baseline['SDK_VERSION']
 
 function Stop-Build([int]$Code, [string]$Message) {
@@ -145,12 +147,14 @@ if ($problems.Count) {
     exit 1
 }
 $running = Get-Process -Name 'crackdown' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe }
+if ($running -and $NoIntro) { Stop-Build 1 "crackdown.exe is already running (PID $($running.Id -join ', ')). Close it so -NoIntro starts a new process." }  # DEBUG_SAULO
 if ($running) {
     Write-Warning "crackdown.exe is already running (PID $($running.Id -join ', ')); not launching another copy."
     exit 0
 }
 
 $gameArgs = @("--game_data_root=`"$GameData`"", "--user_data_root=`"$UserData`"")
+if ($NoIntro) { $gameArgs += '--debug_saulo_no_intro=true' }  # DEBUG_SAULO
 Write-Host 'Launching:'
 Write-Host "  $Exe $($gameArgs -join ' ')"
 Write-Host "  working directory: $BuildDir"

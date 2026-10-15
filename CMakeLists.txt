@@ -20,6 +20,9 @@ set(CRACKDOWN_SOURCES
     src/cache_device.cpp
     src/fullscreen_toggle.cpp
     src/debug_saulo_diagnostics.cpp
+    src/title_compat.cpp
+    src/debug_saulo_no_intro.cpp  # DEBUG_SAULO
+    src/runtime_health.cpp
 )
 
 if(WIN32)

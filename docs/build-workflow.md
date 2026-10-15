@@ -12,7 +12,9 @@ When `build.ps1` prints `Guest code: stale`, regenerate the guest code once, the
 
 - **Guest code** (`generated\default`) is regenerated only by `tools\codegen.ps1`. `build.ps1` never runs codegen. It
   compares content hashes of the XEX, `crackdown_manifest.toml` and every include with
-  `generated\codegen-inputs.stamp`, and stops when they differ.
+  `generated\codegen-inputs.stamp`, and stops when they differ. A patch that touches `src/codegen/` changes the
+  codegen tool too: `codegen.ps1` then builds `rexglue.exe` from the patches into `out\rexglue-codegen` and uses it,
+  and the stamp records that tool, so adding or editing such a patch makes the guest code stale.
 - **ReXGlue runtime and GPU plugin** (`tools\rexglue\win-amd64`) are checked by content hash on every build. The
   fingerprint covers the baseline in `patches\rexglue-sdk\baseline.env`, the build settings in
   `tools\rexruntime-patch.ps1`, the toolchain and every `*.patch` file. When it does not match, `build.ps1` rebuilds
@@ -26,4 +28,10 @@ Manual, for diagnosis only:
     .\tools\build-patched-rexruntime.ps1 -Check     # report the installed runtime and GPU plugin
     .\tools\build-patched-rexruntime.ps1 -Restore   # put the stock release files back
 
-Debug, RelWithDebInfo and Release are all built from the same patch set.
+Only the requested `-Config` is built and installed (default: `RelWithDebInfo`), for targets `rexruntime` and
+`rexgpu-xenos`. Debug and Release keep separate runtime stamps; all configurations use the same patch set.
+Pass the same `-Config` to manual `-Check` or `-Restore` commands.
+
+Toolchain detection restores `.EXE` to `PATHEXT` when missing before invoking `vswhere.exe`. This is needed when
+a Windows PowerShell process inherits an incomplete environment from WSL; builds still use native Windows paths
+and Visual Studio's Clang, LLD, CMake, Ninja and x64 SDK environment.

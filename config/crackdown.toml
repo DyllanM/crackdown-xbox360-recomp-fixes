@@ -1,3 +1,5 @@
 # ReXGlue runtime settings, read from <exe dir>/crackdown.toml.
 # Without a GPU plugin the runtime has no GPU emulation.
 gpu_plugin = "xenos"
+log_max_file_size_mb = 30
+log_max_files = 2
