@@ -1,0 +1,1 @@
+crackdown_add_test(cursor_hider_tests SOURCES cursor_hider_tests.cpp)

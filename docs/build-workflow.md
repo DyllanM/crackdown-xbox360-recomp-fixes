@@ -35,3 +35,21 @@ Pass the same `-Config` to manual `-Check` or `-Restore` commands.
 Toolchain detection restores `.EXE` to `PATHEXT` when missing before invoking `vswhere.exe`. This is needed when
 a Windows PowerShell process inherits an incomplete environment from WSL; builds still use native Windows paths
 and Visual Studio's Clang, LLD, CMake, Ninja and x64 SDK environment.
+
+## Tests, launcher and packaging
+
+    .\tools\test.ps1                         # pure-logic tests (user data, settings file, window placement, installer, ...)
+    .\tools\build.ps1 -Target <names>        # runtime-linked tests (allocator stress, title-thread shutdown, RenderDoc detect)
+    .\tools\package-release.ps1              # local Release build and dist\Crackdown-v<version>-windows-x64.zip
+
+`package-release.ps1` builds into `build-release\`, stages only the allow-listed files and refuses to continue if
+the staging folder holds game files, saves, logs, settings or local paths. Nothing is published or uploaded.
+
+The launcher is the TRG library in `third_party/trg-launcher` (git submodule, pinned commit). It has no upstream
+license file; get one from its author before distributing a package.
+
+Patches with a `.windows` or `.linux` suffix apply only on that platform; unsuffixed patches apply everywhere.
+See `docs/rexglue-patches.md` for what each patch is for.
+
+Linux: only the Linux-suffixed patches and a clean-apply check exist. There are no Linux build or AppImage scripts
+yet, and nothing has been built or run on Linux.

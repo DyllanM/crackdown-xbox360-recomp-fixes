@@ -7,8 +7,10 @@
 .EXAMPLE
   .\tools\build.ps1              # incremental build only
   .\tools\build.ps1 -Clean       # clean configure and build
-  .\tools\build.ps1 -Run         # build, then launch the game
-  .\tools\build.ps1 -Run -NoIntro  # DEBUG_SAULO: launch without the startup logo movies
+  .\tools\build.ps1 -Run         # build, then launch the game (the launcher shows unless disabled in its settings)
+  .\tools\build.ps1 -Run -SkipLauncher  # build, then start the game directly, without the launcher
+  .\tools\build.ps1 -Target crackdown_physical_heap_stress   # build another target
+  .\tools\build.ps1 -Run -NoIntro  # launch without the startup logo movies
   .\tools\build.ps1 -Clean -Run
   .\tools\build.ps1 -Config Release -BuildDir build-release   # separate tree
 
@@ -17,7 +19,9 @@ Exit codes: 0 success, 1 configure, build or runtime check failed, 2 a prerequis
 param(
     [switch]$Clean,
     [switch]$Run,
-    [switch]$NoIntro,  # DEBUG_SAULO: temporary, launches with --debug_saulo_no_intro=true
+    [switch]$SkipLauncher,  # with -Run: start the game directly instead of showing the launcher
+    [string[]]$Target,  # CMake targets to build; default: all
+    [switch]$NoIntro,  # launches with --crackdown_skip_intro=true (the launcher's Gameplay > Skip intro toggle)
     [ValidateSet('Debug', 'RelWithDebInfo', 'Release')]
     [string]$Config = 'RelWithDebInfo',
     [int]$Jobs = 0,
@@ -118,7 +122,8 @@ try {
 
     Write-Host "Building Crackdown $Config..."
     $parallel = if ($Jobs -gt 0) { @('--parallel', $Jobs) } else { @() }
-    & $Toolchain.CMake --build $BuildDir @parallel
+    $targets = @(if ($Target) { '--target'; @($Target | ForEach-Object { $_ -split ',' }) })
+    & $Toolchain.CMake --build $BuildDir @targets @parallel
     if ($LASTEXITCODE) { throw "Build failed ($LASTEXITCODE)" }
 
     Sync-RexglueStaging $Layout $BuildDir $Config
@@ -147,14 +152,15 @@ if ($problems.Count) {
     exit 1
 }
 $running = Get-Process -Name 'crackdown' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe }
-if ($running -and $NoIntro) { Stop-Build 1 "crackdown.exe is already running (PID $($running.Id -join ', ')). Close it so -NoIntro starts a new process." }  # DEBUG_SAULO
+if ($running -and $NoIntro) { Stop-Build 1 "crackdown.exe is already running (PID $($running.Id -join ', ')). Close it so -NoIntro starts a new process." }
 if ($running) {
     Write-Warning "crackdown.exe is already running (PID $($running.Id -join ', ')); not launching another copy."
     exit 0
 }
 
 $gameArgs = @("--game_data_root=`"$GameData`"", "--user_data_root=`"$UserData`"")
-if ($NoIntro) { $gameArgs += '--debug_saulo_no_intro=true' }  # DEBUG_SAULO
+if ($SkipLauncher) { $gameArgs += '--crackdown_skip_launcher=true' }
+if ($NoIntro) { $gameArgs += '--crackdown_skip_intro=true' }
 Write-Host 'Launching:'
 Write-Host "  $Exe $($gameArgs -join ' ')"
 Write-Host "  working directory: $BuildDir"

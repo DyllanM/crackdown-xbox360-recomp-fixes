@@ -1,0 +1,26 @@
+diff --git a/src/graphics/pipeline/render_target/cache.cpp b/src/graphics/pipeline/render_target/cache.cpp
+index 953c5fd..48c98d8 100644
+--- a/src/graphics/pipeline/render_target/cache.cpp
++++ b/src/graphics/pipeline/render_target/cache.cpp
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <cmath>
+ #include <cstring>
+ #include <iterator>
+@@ -413,6 +414,13 @@ bool RenderTargetCache::Update(bool is_rasterization_done,
+                  uint32_t(1) << uint32_t(msaa_samples));
+     return false;
+   }
++  if (is_rasterization_done && msaa_samples != xenos::MsaaSamples::k1X) {
++    static std::atomic<uint32_t> logged_msaa_samples{0};
++    const uint32_t bit = uint32_t(1) << uint32_t(msaa_samples);
++    if (!(logged_msaa_samples.fetch_or(bit) & bit)) {
++      REXGPU_INFO("Guest draws to {}x MSAA render targets", uint32_t(1) << uint32_t(msaa_samples));
++    }
++  }
+   uint32_t msaa_samples_x_log2 = uint32_t(msaa_samples >= xenos::MsaaSamples::k4X);
+   uint32_t pitch_pixels = rb_surface_info.surface_pitch;
+   // surface_pitch 0 should be handled in disabling rasterization (hopefully

@@ -1,0 +1,1 @@
+crackdown_add_test(window_placement_tests SOURCES window_placement_tests.cpp)

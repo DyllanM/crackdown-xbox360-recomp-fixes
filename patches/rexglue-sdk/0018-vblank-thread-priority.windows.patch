@@ -1,0 +1,17 @@
+diff --git a/src/graphics/graphics_system.cpp b/src/graphics/graphics_system.cpp
+index ecd082b..460eb9e 100644
+--- a/src/graphics/graphics_system.cpp
++++ b/src/graphics/graphics_system.cpp
+@@ -184,6 +184,12 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
+   // vsync_worker_thread_->set_can_debugger_suspend(true);
+   vsync_worker_thread_->set_name("GPU VSync");
+   vsync_worker_thread_->Create();
++#if REX_PLATFORM_WIN32
++  // It sleeps between vblanks; a busy machine must not make them late.
++  if (auto* vsync_thread = vsync_worker_thread_->thread()) {
++    vsync_thread->set_priority(rex::thread::ThreadPriority::kAboveNormal);
++  }
++#endif
+ 
+   return X_STATUS_SUCCESS;
+ }

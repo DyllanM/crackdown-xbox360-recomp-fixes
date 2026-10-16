@@ -11,12 +11,14 @@
 .EXAMPLE
   .\tools\build-patched-rexruntime.ps1           # build and install the patched files
   .\tools\build-patched-rexruntime.ps1 -Check    # report whether the installed files are current
+  .\tools\build-patched-rexruntime.ps1 -Check -Staged build   # also require the DLLs in a build folder to be those files
   .\tools\build-patched-rexruntime.ps1 -Restore  # put the stock release files back
   .\tools\build-patched-rexruntime.ps1 -Codegen  # build the codegen tool from the codegen patches (tools\codegen.ps1 runs this)
 #>
 param(
     [string]$WorkDir,  # ReXGlue source and build folder; default: out\rexglue-sdk-src
     [switch]$Check,
+    [string]$Staged,  # with -Check: a build folder whose DLLs must be the installed ones
     [switch]$Restore,
     [switch]$Codegen,
     [ValidateSet('Debug', 'RelWithDebInfo', 'Release')]
@@ -159,6 +161,7 @@ function Install-RexglueRuntime($Layout, $Built, $Inputs) {
 
 if ($Check) {
     $problems = @(Get-RexglueInstallProblems $Layout)
+    if ($Staged) { $problems += @(Get-RexglueStagingProblems $Layout $Staged $Config) }
     foreach ($problem in $problems) { Write-Host "  $problem" -ForegroundColor Red }
     if ($problems.Count) { exit 1 }
     Write-Host "ReXGlue patches: current ($(Get-RexglueSummary $Layout))"

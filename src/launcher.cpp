@@ -1,0 +1,761 @@
+#include "launcher.h"
+
+#include <algorithm>
+#include <cfloat>
+#include <cmath>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <imgui.h>
+
+#include <rex/cvar.h>
+#include <rex/logging.h>
+#include <rex/ui/imgui_dialog.h>
+#include <rex/version.h>
+
+#include "trg/headers.h"
+#include "trg/launcher.h"
+#include "trg/platform.h"
+
+#include "game_files.h"
+#include "platform.h"
+#include "settings.h"
+
+namespace crackdown {
+namespace {
+
+// Logical pixels.
+constexpr std::pair<int, int> kLauncherWindowSize = {1280, 720};
+// Share of the primary display's work area the launcher may take.
+constexpr double kLauncherMaxShare = 0.9;
+// How long the saved message stays on screen before the game starts.
+constexpr double kPlayFeedbackSeconds = 0.4;
+
+constexpr std::pair<int, int> kWindowSizes[] = {{1280, 720}, {1600, 900}, {1920, 1080}, {2560, 1440}};
+
+constexpr ImGuiConfigFlags kNavFlags = ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+
+// The Agency's HUD blue, over the Midnight background.
+const ImVec4 kAccent = ImVec4(0.25f, 0.65f, 0.95f, 1.0f);
+const ImVec4 kDeepBlue = ImVec4(0.07f, 0.18f, 0.35f, 1.0f);
+
+trg::Theme LauncherTheme() {
+  trg::Theme theme = trg::Theme::Midnight().WithAccent(kAccent);
+  theme.good = kDeepBlue;
+  theme.good_dot = kAccent;
+  return theme;
+}
+
+trg::HeaderPainter LauncherHeader() {
+  return trg::headers::Gradient(IM_COL32(14, 18, 30, 255), IM_COL32(12, 42, 68, 255), IM_COL32(8, 24, 40, 255),
+                                IM_COL32(8, 10, 18, 255));
+}
+
+trg::Fonts g_fonts;
+
+GameFiles CheckAndLogGameFiles(const std::filesystem::path& game_dir) {
+  GameFiles files = CheckGameFiles(game_dir);
+  if (files.state != GameFiles::kReady && files.state != GameFiles::kMissing) {
+    REXLOG_WARN("Game files in {}: {}", Utf8(game_dir), files.detail);
+  }
+  return files;
+}
+
+// Written by the install job, read once the Task has finished.
+struct InstallOutcome {
+  InstallResult result;
+  GameFiles files;
+};
+
+std::string Size(int width, int height) {
+  return std::to_string(width) + " \xC3\x97 " + std::to_string(height);
+}
+
+// The guest video mode is pinned to this in crackdown.toml; resolution_scale multiplies it.
+constexpr int kPresentedWidth = 1280;
+constexpr int kPresentedHeight = 720;
+
+std::vector<trg::Option> RenderResolutionOptions() {
+  std::vector<trg::Option> options;
+  for (int scale = 1; scale <= 4; ++scale) {
+    std::string label = scale == 1 ? "Original" : std::to_string(scale) + "x";
+    label += " \xE2\x80\x94 " + std::to_string(kPresentedWidth * scale) + "x" + std::to_string(kPresentedHeight * scale);
+    if (scale == 2) {
+      label += " \xE2\x80\x94 Recommended for 1440p";
+    }
+    options.push_back({std::to_string(scale), label});
+  }
+  return options;
+}
+
+std::string KeyList(std::string keys) {
+  if (keys.empty()) {
+    return "None";
+  }
+  for (size_t i = keys.find(','); i != std::string::npos; i = keys.find(',', i)) {
+    keys.replace(i, 1, " or ");
+  }
+  return keys;
+}
+
+class LauncherDialog;
+LauncherDialog* g_dialog = nullptr;
+
+class LauncherDialog final : public rex::ui::ImGuiDialog {
+ public:
+  LauncherDialog(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings,
+                 LauncherCallbacks callbacks)
+      : ImGuiDialog(drawer),
+        paths_(std::move(paths)),
+        cb_(std::move(callbacks)),
+        settings_(settings),
+        game_files_(CheckAndLogGameFiles(paths_.game_dir).state),
+        monitors_(ListMonitors()) {
+    g_dialog = this;
+    launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
+    if (WindowFullscreen()) {
+      restore_when_windowed_ = true;
+      RequestFullscreen(false);
+    } else {
+      StartInSavedState();
+    }
+  }
+
+  ~LauncherDialog() override {
+    if (g_dialog == this) {
+      g_dialog = nullptr;
+    }
+  }
+
+  void FileDropped(const std::filesystem::path& path) {
+    if (starting_ || install_.running()) {
+      return;
+    }
+    StartInstall(path);
+  }
+
+ protected:
+  void OnDraw(ImGuiIO& io) override {
+    if (done_) {
+      return;
+    }
+    PollInstall();
+    TrackPlacement();
+    if (!nav_taken_) {
+      saved_nav_flags_ = io.ConfigFlags & kNavFlags;
+      saved_has_gamepad_ = io.BackendFlags & ImGuiBackendFlags_HasGamepad;
+      io.ConfigFlags |= kNavFlags;
+      nav_taken_ = true;
+    }
+    gamepad_.Update(io);
+    if (!starting_ && ImGui::IsKeyPressed(ImGuiKey_F11, false) && !fullscreen_gate_.Pending()) {
+      ToggleLauncherFullscreen();
+    }
+    if (starting_ && ImGui::GetTime() - play_started_ >= kPlayFeedbackSeconds && !LeavingFullscreen()) {
+      StartGame();
+      return;
+    }
+    if (starting_) {
+      // TRG's hotkeys read the same key state, so release it before Frame() runs.
+      io.ClearInputKeys();
+      io.ClearInputMouse();
+    }
+    ImGui::BeginDisabled(starting_);
+    const trg::Result result = launcher_->Frame();
+    ImGui::EndDisabled();
+    if (starting_) {
+      DrawStartingMessage();
+    }
+    switch (result) {
+      case trg::Result::kPlay:
+        RequestPlay();
+        break;
+      case trg::Result::kQuit:
+        if (!starting_) {
+          Finish(cb_.quit);
+        }
+        break;
+      case trg::Result::kNone:
+        break;
+    }
+  }
+
+  // Every PLAY (mouse, Enter, Xbox Start) ends here. The one save happens here; StartGame never saves.
+  void RequestPlay() {
+    if (starting_ || install_.running() || game_files_ != GameFiles::kReady) {
+      return;
+    }
+    if (!launcher_->Save()) {
+      return;
+    }
+    starting_ = true;
+    play_started_ = ImGui::GetTime();
+    launcher_->SetStatus("", 0.0);
+  }
+
+  void StartGame() {
+    if (cb_.window_changed && cb_.window_changed()) {
+      if (cb_.restart && cb_.restart()) {
+        Finish(nullptr);
+        return;
+      }
+      starting_ = false;
+      launcher_->SetStatus("Could not start the game in a new window. Press Play to try again.", 8);
+      return;
+    }
+    RestoreStartupWindow();
+    Finish(cb_.play);
+  }
+
+  // Drawn outside the disabled frame so the message keeps full brightness.
+  void DrawStartingMessage() {
+    constexpr const char* kText = "Settings saved. Starting game...";
+    ImFont* font = g_fonts.semibold ? g_fonts.semibold : ImGui::GetFont();
+    const float size = g_fonts.size * 1.25f;
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const ImVec2 text_size = font->CalcTextSizeA(size, FLT_MAX, 0.0f, kText);
+    const ImVec2 pos(vp->Pos.x + (vp->Size.x - text_size.x) * 0.5f, vp->Pos.y + (vp->Size.y - text_size.y) * 0.5f);
+    ImGui::GetForegroundDrawList()->AddText(font, size, pos, ImGui::GetColorU32(kAccent), kText);
+  }
+
+  // Runs inside the last frame; the in-game overlays share this ImGui context.
+  void OnClose() override {
+    ImGuiIO& io = GetIO();
+    gamepad_.Release(io);
+    io.ConfigFlags = (io.ConfigFlags & ~kNavFlags) | saved_nav_flags_;
+    io.BackendFlags = (io.BackendFlags & ~ImGuiBackendFlags_HasGamepad) | saved_has_gamepad_;
+  }
+
+ private:
+  void Finish(std::function<void()> action) {
+    done_ = true;
+    SavePlacement(placement_.Flush());
+    Close();
+    if (action) {
+      action();
+    }
+  }
+
+  void* WindowHandle() const { return cb_.window_handle ? cb_.window_handle() : nullptr; }
+
+  bool WindowFullscreen() const { return cb_.window_fullscreen && cb_.window_fullscreen(); }
+
+  void StartInSavedState() {
+    RestorePlacement();
+    if (fullscreen_pref_.wanted()) {
+      RequestFullscreen(true);
+    }
+  }
+
+  void ToggleLauncherFullscreen() {
+    const bool fullscreen = !WindowFullscreen();
+    RequestFullscreen(fullscreen);
+    fullscreen_pref_.UserSet(fullscreen);
+    if (!settings_.SaveNow(LauncherFullscreenValues(fullscreen))) {
+      REXLOG_WARN("Could not save the launcher fullscreen state");
+    }
+  }
+
+  void RequestFullscreen(bool fullscreen) {
+    fullscreen_gate_.Request(fullscreen);
+    if (cb_.set_window_fullscreen) {
+      cb_.set_window_fullscreen(fullscreen);
+    }
+  }
+
+  // The game gets the window out of the launcher's temporary fullscreen.
+  bool LeavingFullscreen() {
+    if (!WindowFullscreen() || leave_gave_up_) {
+      return false;
+    }
+    if (!leave_requested_) {
+      leave_requested_ = true;
+      leave_started_ = ImGui::GetTime();
+      RequestFullscreen(false);
+    }
+    leave_gave_up_ = ImGui::GetTime() - leave_started_ >= FullscreenGate::kTimeoutSeconds;
+    return !leave_gave_up_;
+  }
+
+  void RestorePlacement() {
+    if (const auto placed = TakePreShowResult()) {
+      startup_ = placed->startup;
+      placement_ = PlacementTracker(placed->applied);
+      return;
+    }
+    void* window = WindowHandle();
+    const auto state = QueryWindowState(window);
+    if (!state || WindowFullscreen()) {
+      return;
+    }
+    const WindowPlacement saved = SavedLauncherPlacement();
+    const bool restorable = PlacementIsVisible(saved, WorkAreas());
+    startup_ = WindowPlacement{state->rect, state->maximized};
+    placement_ = PlacementTracker(restorable ? std::optional<WindowPlacement>(saved) : std::nullopt);
+    if (restorable) {
+      ApplyWindowPlacement(window, saved);
+    }
+  }
+
+  void TrackPlacement() {
+    const double now = ImGui::GetTime();
+    const FullscreenGate::Step step = fullscreen_gate_.Update(WindowFullscreen(), now);
+    if (restore_when_windowed_) {
+      if (!WindowFullscreen() && !fullscreen_gate_.Pending()) {
+        restore_when_windowed_ = false;
+        StartInSavedState();
+      }
+      return;
+    }
+    if (!startup_) {
+      return;
+    }
+    if (step.restore) {
+      if (const auto current = placement_.Current()) {
+        ApplyWindowPlacement(WindowHandle(), *current);
+      }
+    }
+    if (!step.observe) {
+      return;
+    }
+    if (const auto state = QueryWindowState(WindowHandle())) {
+      placement_.Observe(*state, WindowFullscreen(), now);
+      SavePlacement(placement_.TakeSettled(now));
+    }
+  }
+
+  void SavePlacement(const std::optional<WindowPlacement>& placement) {
+    if (placement && !settings_.SaveNow(PlacementValues(*placement))) {
+      REXLOG_WARN("Could not save the launcher window placement");
+    }
+  }
+
+  // The game keeps the window it was created with, not the launcher's saved placement.
+  void RestoreStartupWindow() {
+    if (startup_ && !WindowFullscreen()) {
+      ApplyWindowPlacement(WindowHandle(), *startup_);
+    }
+  }
+
+  trg::LauncherConfig MakeConfig() {
+    trg::LauncherConfig c;
+    c.settings = &settings_;
+    // PLAY saves in RequestPlay, so a failed save keeps the launcher open.
+    c.save_on_play = false;
+    c.theme = LauncherTheme();
+    c.note = "Play applies the changes. Save keeps them without starting.";
+    c.fonts = g_fonts;
+    c.branding.title = "CRACKDOWN";
+    c.branding.background = LauncherHeader();
+    c.pages = {
+        {"Play", "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
+         [this] { return game_files_ != GameFiles::kReady; }},
+        {"Display", "Window, monitor and how the picture fits your screen.",
+         [this](trg::Ui& ui) { PageDisplay(ui); }},
+        {"Graphics", "Render resolution, anti-aliasing and texture filtering.",
+         [](trg::Ui& ui) { PageGraphics(ui); }},
+        {"Gameplay", "What the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
+        {"Controls", "Controller and keyboard.", [](trg::Ui& ui) { PageControls(ui); }},
+        {"About", "About this port, and where your files and settings live.",
+         [this](trg::Ui& ui) { PageAbout(ui); }},
+    };
+    c.can_play = [this] {
+      if (install_.running()) {
+        return trg::PlayCheck{false, "Wait for the install to finish.", 0};
+      }
+      if (game_files_ == GameFiles::kReady) {
+        return trg::PlayCheck{};
+      }
+      return trg::PlayCheck{false, "The game files are not ready: see the Play page.", 0};
+    };
+    c.on_file_drop = [this](const std::string& path) { FileDropped(PathFromUtf8(path)); };
+    return c;
+  }
+
+  void PagePlay(trg::Ui& ui) {
+    const std::string dir = Utf8(paths_.game_dir);
+    if (install_.running()) {
+      ui.StatusCard(trg::Status::kBusy, "Installing game files", nullptr, std::max(0.0f, install_.fraction()));
+    } else {
+      switch (game_files_) {
+        case GameFiles::kReady:
+          ui.StatusCard(trg::Status::kReady, "Ready to play", dir.c_str());
+          break;
+        case GameFiles::kUnsupported:
+          ui.StatusCard(trg::Status::kAttention, "Different version of the game",
+                        DescribeInstall(InstallStatus::kWrongVersion).text.c_str());
+          break;
+        case GameFiles::kIncomplete:
+          ui.StatusCard(trg::Status::kAttention, "Game files incomplete",
+                        DescribeInstall(InstallStatus::kIncomplete).text.c_str());
+          break;
+        case GameFiles::kMissing:
+          ui.StatusCard(trg::Status::kAttention, "Game files needed",
+                        "This port requires your own copy of the Crackdown disc.");
+          break;
+      }
+    }
+    if (!install_failure_.empty()) {
+      DrawFailure(ui, install_failure_, install_failure_text_);
+    }
+    if (paths_.game_dir.empty()) {
+      ui.Help("No game folder was given: start the game with --game_data_root.");
+    } else {
+      ui.Row("Game files",
+             "Title ID: 4D5307DC. No game files are included with this port: the installer copies them (about 6 GB) "
+             "from your own Crackdown disc image or from a folder with the disc's contents. You can also drop one "
+             "on this window.");
+      if (!ui.TaskProgress(install_)) {
+        const bool ready = game_files_ == GameFiles::kReady;
+        if (ready ? ImGui::Button("Reinstall from disc image...", ImVec2(-FLT_MIN, 0))
+                  : ui.AccentButton("Install from disc image...")) {
+          BrowseAndInstall(false);
+        }
+        if (ImGui::Button("Install from folder...", ImVec2(-FLT_MIN, 0))) {
+          BrowseAndInstall(true);
+        }
+      }
+    }
+    ui.LauncherVisibilityRow("crackdown_launcher");
+    ui.EndRows();
+  }
+
+  static void DrawFailure(trg::Ui& ui, const std::string& title, const std::string& text) {
+    ui.Spacer(4);
+    ImGui::PushStyleColor(ImGuiCol_Text, ui.theme().warn_dot);
+    ImGui::TextUnformatted(title.c_str());
+    ImGui::PopStyleColor();
+    ui.Help(text.c_str());
+    ui.Spacer(4);
+  }
+
+  void BrowseAndInstall(bool folder) {
+    PollInstall();
+    if (install_.running()) {
+      return;
+    }
+    const std::string picked =
+        folder ? trg::BrowseForFolder("Select the folder with the Crackdown disc contents")
+               : trg::BrowseForFile("Select your Crackdown disc image", {{"Xbox 360 disc image", "*.iso"}});
+    if (!picked.empty()) {
+      StartInstall(PathFromUtf8(picked));
+    }
+  }
+
+  void StartInstall(const std::filesystem::path& source) {
+    install_failure_.clear();
+    install_failure_text_.clear();
+    outcome_ = std::make_shared<InstallOutcome>();
+    const bool started = install_.Start(
+        "Reading the game files...",
+        [outcome = outcome_, source, game_dir = paths_.game_dir](trg::Task& task) {
+          InstallHooks hooks;
+          hooks.progress = [&task](const InstallProgress& progress) {
+            task.SetLabel(progress.phase);
+            task.Progress(static_cast<long long>(progress.done_bytes), static_cast<long long>(progress.total_bytes));
+            return !task.cancelled();
+          };
+          outcome->result = InstallGame(source, game_dir, hooks);
+          if (outcome->result.ok()) {
+            outcome->files = CheckGameFiles(game_dir);
+          }
+          return outcome->result.ok() ? std::string() : DescribeInstall(outcome->result.status).title;
+        });
+    if (started) {
+      REXLOG_INFO("Installing game files from {}", Utf8(source));
+    } else {
+      outcome_.reset();
+    }
+  }
+
+  // Runs every frame so a finished install is picked up whichever page is open.
+  void PollInstall() {
+    std::string error;
+    if (install_.Finish(&error) == trg::Task::State::kIdle) {
+      return;
+    }
+    const std::shared_ptr<InstallOutcome> outcome = std::move(outcome_);
+    if (!outcome) {
+      return;
+    }
+    const InstallResult& result = outcome->result;
+    const InstallMessage message = DescribeInstall(result.status);
+    if (result.ok() || result.status == InstallStatus::kCancelled) {
+      if (result.ok()) {
+        game_files_ = outcome->files.state;
+        REXLOG_INFO("Game files installed");
+      } else {
+        REXLOG_INFO("Game install cancelled");
+      }
+      launcher_->SetStatus(message.title + ". " + message.text, 6.0);
+      return;
+    }
+    REXLOG_WARN("Game install failed: {} ({})", message.title, result.detail);
+    install_failure_ = message.title;
+    install_failure_text_ = message.text;
+    launcher_->SetStatus("Install failed: " + install_failure_, 8.0);
+  }
+
+  void PageDisplay(trg::Ui& ui) {
+    ui.Toggle("Display mode",
+              "How the game starts. Borderless Fullscreen fills the monitor. F11 switches while playing.", "fullscreen",
+              false, "Windowed", "Borderless Fullscreen");
+    ui.Row("Window size", "The game window's size in Windowed mode.");
+    WindowSizeCombo();
+    ui.Row("Monitor", "The display the game opens on.");
+    MonitorCombo();
+    ui.Row("VSync", "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.");
+    {
+      const bool tearing = settings_.GetBool(kTearingSetting, true);
+      if (int i = ui.Segmented("vsync", {"Off", "On"}, tearing ? 0 : 1); i >= 0) {
+        settings_.SetBool(kTearingSetting, i == 0);
+      }
+    }
+    ui.Row("Aspect ratio", "Letterbox keeps the game's 16:9 picture on any window shape; Stretch fills the window.");
+    {
+      const bool letterbox = settings_.GetBool("present_letterbox", true);
+      if (int i = ui.Segmented("aspect", {"Letterbox 16:9", "Stretch"}, letterbox ? 0 : 1); i >= 0) {
+        settings_.SetBool("present_letterbox", i == 0);
+      }
+    }
+  }
+
+  const MonitorInfo* SelectedMonitor() const {
+    const int index = settings_.GetInt("monitor", 0);
+    if (index >= 1 && index <= int(monitors_.size())) {
+      return &monitors_[size_t(index - 1)];
+    }
+    for (const MonitorInfo& m : monitors_) {
+      if (m.primary) {
+        return &m;
+      }
+    }
+    return monitors_.empty() ? nullptr : &monitors_.front();
+  }
+
+  // window_width/height are logical pixels; display scaling enlarges them.
+  void WindowSizeCombo() {
+    const int width = settings_.GetInt("window_width", 0);
+    const int height = settings_.GetInt("window_height", 0);
+    const MonitorInfo* monitor = SelectedMonitor();
+    const float scale = monitor ? monitor->scale : 1.0f;
+    auto label = [scale](int w, int h) {
+      if (w <= 0 || h <= 0) {
+        return std::string("Default");
+      }
+      std::string text = Size(w, h);
+      if (scale != 1.0f) {
+        text += "   (" + Size(int(std::lround(w * scale)), int(std::lround(h * scale))) + " on screen)";
+      }
+      return text;
+    };
+    if (ImGui::BeginCombo("##window_size", label(width, height).c_str())) {
+      for (const auto& [w, h] : kWindowSizes) {
+        const bool current = w == width && h == height;
+        const bool fits = !monitor || (w * scale < monitor->width && h * scale < monitor->height);
+        if (!current && !fits) {
+          continue;
+        }
+        if (ImGui::Selectable(label(w, h).c_str(), current) && !current) {
+          settings_.SetInt("window_width", w);
+          settings_.SetInt("window_height", h);
+        }
+      }
+      ImGui::EndCombo();
+    }
+  }
+
+  void MonitorCombo() {
+    const int current = settings_.GetInt("monitor", 0);
+    auto label = [this](int index) {
+      if (index <= 0) {
+        return std::string("Default");
+      }
+      if (index > int(monitors_.size())) {
+        return "Display " + std::to_string(index) + " (not connected)";
+      }
+      const MonitorInfo& m = monitors_[size_t(index - 1)];
+      return "Display " + std::to_string(index) + (m.primary ? " (primary)" : "") + "   " + Size(m.width, m.height);
+    };
+    if (ImGui::BeginCombo("##monitor", label(current).c_str())) {
+      for (int i = 1; i <= int(monitors_.size()); ++i) {
+        if (ImGui::Selectable(label(i).c_str(), i == current) && i != current) {
+          settings_.SetInt("monitor", i);
+        }
+      }
+      ImGui::EndCombo();
+    }
+  }
+
+  static void PageGraphics(trg::Ui& ui) {
+    ui.Combo("Render resolution",
+             "Draws the game at a multiple of its own picture, then scales it to the window. Higher is sharper and "
+             "costs more GPU time. Window size is separate.",
+             "resolution_scale", "1", RenderResolutionOptions());
+    ui.Choice("Anti-aliasing", "Smooths jagged edges after the frame is drawn. Extreme is softer but cleaner.",
+              "swap_post_effect", "none", {{"none", "Off"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA Extreme"}});
+    ui.Toggle("Multisampling",
+              "The game draws parts of the scene with multisampling, which cannot be turned off. 2\xC3\x97 MSAA is "
+              "fastest; try 4\xC3\x97 only if the 2\xC3\x97 parts show graphics problems.",
+              "crackdown_msaa_compatibility", false, "2\xC3\x97 MSAA", "4\xC3\x97 MSAA (Compatibility)");
+    ui.Choice("Texture filtering",
+              "Anisotropic filtering keeps textures sharp at oblique angles. Game leaves it to the game.",
+              "anisotropic_override", "3",
+              {{"-1", "Game"},
+               {"0", "Off"},
+               {"2", "2\xC3\x97"},
+               {"3", "4\xC3\x97"},
+               {"4", "8\xC3\x97"},
+               {"5", "16\xC3\x97"}},
+              6);
+  }
+
+  static void PageGameplay(trg::Ui& ui) {
+    ui.Toggle("Skip intro", "Start directly at the title screen", "crackdown_skip_intro", false, "Off", "On");
+    ui.Toggle("Frame rate in title", "Shows the game's frame rate in the window title: Crackdown Recompiled | FPS: 60.00",
+              "crackdown_show_fps", true, "Off", "On");
+    ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 toggles it while playing.",
+              "crackdown_show_frame_counter", false, "Hidden", "Shown");
+  }
+
+  static void PageControls(trg::Ui& ui) {
+    ui.Info("Controller", "Automatic: Xbox controllers work without setup.");
+    ui.Toggle("Keyboard", "Plays as an Xbox 360 controller, together with any connected controller.", "mnk_mode",
+              false, "Disabled", "Enabled");
+    if (ui.Section("Keyboard keys")) {
+      ui.Help("Plain arrow keys are the right stick. Menus use W A S D or Shift + arrow keys.");
+      for (const rex::cvar::FlagEntry& e : rex::cvar::GetRegistry()) {
+        if (e.category == "Input/Keybinds/Controller") {
+          ui.Info(e.description.c_str(), KeyList(e.getter()).c_str());
+        }
+      }
+    }
+  }
+
+  void PageAbout(trg::Ui& ui) {
+    ui.Paragraph(
+        "Crackdown for Xbox 360, statically recompiled to run natively on PC with the ReXGlue SDK. No game code or "
+        "assets are included: the game runs from your own game files.");
+    ui.Spacer(4);
+    if (!paths_.game_dir.empty()) {
+      ui.FolderRow("Game files", "Where the game data is read from.", "Open game folder", Utf8(paths_.game_dir));
+    }
+    ui.FolderRow("Saves and settings",
+                 paths_.user_data_outcome == UserDataOutcome::kExplicit
+                     ? "A folder given with --user_data_root."
+                     : "Saves, settings and caches live next to the program. Copy this folder to move them.",
+                 "Open data folder", Utf8(paths_.user_dir));
+    if (ui.ButtonRow("Settings file", "Your launcher choices, as plain text. Loaded after crackdown.toml.",
+                     "Show settings file") &&
+        launcher_->Save()) {
+      std::error_code ec;
+      const bool exists = std::filesystem::exists(paths_.settings_file, ec);
+      trg::OpenInFileManager(Utf8(exists ? paths_.settings_file : paths_.user_dir));
+    }
+    ui.ResetAllRow();
+    ui.Info("Port version", CRACKDOWN_PORT_VERSION);
+    ui.Info("Libraries", "ReXGlue SDK " REXGLUE_VERSION_STRING "   \xC2\xB7   TRG Launcher " CRACKDOWN_TRG_VERSION);
+    ui.Info("Game", "Xbox 360 disc, title 4D5307DC, game version TU0");
+  }
+
+  LauncherPaths paths_;
+  LauncherCallbacks cb_;
+  GameSettings& settings_;
+  GameFiles::State game_files_;
+  std::vector<MonitorInfo> monitors_;
+  std::unique_ptr<trg::Launcher> launcher_;
+  LauncherGamepad gamepad_;
+  bool nav_taken_ = false;
+  bool starting_ = false;
+  double play_started_ = 0.0;
+  ImGuiConfigFlags saved_nav_flags_ = 0;
+  ImGuiBackendFlags saved_has_gamepad_ = 0;
+  bool done_ = false;
+  std::optional<WindowPlacement> startup_;
+  PlacementTracker placement_;
+  FullscreenGate fullscreen_gate_;
+  LauncherFullscreenPreference fullscreen_pref_{SavedLauncherFullscreen()};
+  bool restore_when_windowed_ = false;
+  bool leave_requested_ = false;
+  bool leave_gave_up_ = false;
+  double leave_started_ = 0.0;
+  std::string install_failure_;
+  std::string install_failure_text_;
+  std::shared_ptr<InstallOutcome> outcome_;
+  trg::Task install_;
+};
+
+bool g_skipped_once = false;
+
+std::pair<int, int> LauncherWindowSize() {
+  const MonitorInfo primary = MonitorForSetting(1);
+  if (primary.width == 0 || primary.scale <= 0.0f) {
+    return kLauncherWindowSize;
+  }
+  const int max_width = int(primary.work_width * kLauncherMaxShare / primary.scale);
+  const int max_height = int(primary.work_height * kLauncherMaxShare / primary.scale);
+  return {std::min(kLauncherWindowSize.first, max_width), std::min(kLauncherWindowSize.second, max_height)};
+}
+
+}  // namespace
+
+void LoadLauncherFonts(ImFontAtlas* atlas, float density) {
+  // Latin-1 plus General Punctuation.
+  static const ImWchar kRanges[] = {0x0020, 0x00FF, 0x2010, 0x205E, 0};
+  ImFontConfig config;
+  config.RasterizerDensity = density;
+  auto load = [&](const std::filesystem::path& path) -> ImFont* {
+    std::error_code ec;
+    if (path.empty() || !std::filesystem::exists(path, ec)) {
+      return nullptr;
+    }
+    return atlas->AddFontFromFileTTF(Utf8(path).c_str(), g_fonts.size, &config, kRanges);
+  };
+  const UiFontFiles fonts = FindUiFonts();
+  g_fonts.regular = load(fonts.regular);
+  g_fonts.semibold = load(fonts.semibold);
+  g_fonts.bold = load(fonts.bold);
+}
+
+bool ShouldShowLauncher(const std::filesystem::path& game_dir) {
+  g_skipped_once = REXCVAR_GET(crackdown_skip_launcher);
+  rex::cvar::ResetToDefault("crackdown_skip_launcher");
+  return LauncherWanted(CheckAndLogGameFiles(game_dir).state == GameFiles::kReady, g_skipped_once, ShiftHeld(),
+                        REXCVAR_GET(crackdown_launcher));
+}
+
+bool ShiftHeldAfterWindowOpened() {
+#if defined(_WIN32)
+  return false;
+#else
+  return !g_skipped_once && ShiftHeld();
+#endif
+}
+
+void PrepareLauncherWindow() {
+  const auto [width, height] = LauncherWindowSize();
+  rex::cvar::SetFlagByName("fullscreen", "false");
+  rex::cvar::SetFlagByName("window_width", std::to_string(width));
+  rex::cvar::SetFlagByName("window_height", std::to_string(height));
+  // Monitor 0 lets SDL centre the window on the primary display, whatever the display order.
+  rex::cvar::SetFlagByName("monitor", "0");
+  const WindowPlacement saved = SavedLauncherPlacement();
+  InstallPreShowPlacement(PlanPreShow(saved, WorkAreas()), saved);
+}
+
+void ShowLauncher(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings,
+                  LauncherCallbacks callbacks) {
+  new LauncherDialog(drawer, std::move(paths), settings, std::move(callbacks));
+}
+
+void LauncherFileDropped(const std::filesystem::path& path) {
+  if (g_dialog) {
+    g_dialog->FileDropped(path);
+  }
+}
+
+}  // namespace crackdown

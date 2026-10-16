@@ -1,0 +1,23 @@
+diff --git a/src/graphics/graphics_system.cpp b/src/graphics/graphics_system.cpp
+index 8f2fcb0..ecd082b 100644
+--- a/src/graphics/graphics_system.cpp
++++ b/src/graphics/graphics_system.cpp
+@@ -166,7 +166,17 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
+             MarkVblank();
+             last_frame_time += interval_ticks;
+           }
+-          rex::thread::Sleep(std::chrono::milliseconds(1));
++          // Wait for the next vblank instead of polling for it.
++          current_time = chrono::Clock::QueryGuestTickCount();
++          uint64_t elapsed_ticks = current_time - last_frame_time;
++          if (elapsed_ticks >= interval_ticks) {
++            continue;
++          }
++          double remaining_us = double(interval_ticks - elapsed_ticks) * 1e6 /
++                                double(guest_tick_frequency) /
++                                std::max(chrono::Clock::guest_time_scalar(), 1e-3);
++          rex::thread::Sleep(std::chrono::microseconds(
++              std::clamp(int64_t(remaining_us), int64_t(1000), int64_t(100000))));
+         }
+         return 0;
+       }));

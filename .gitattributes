@@ -3,3 +3,7 @@ crackdown_manifest.toml text eol=lf
 
 # The runtime patches and baseline are hashed; their bytes must be the same on every checkout.
 patches/rexglue-sdk/* text eol=lf
+
+# Linux scripts and files run on Linux whatever the checkout's line endings.
+*.sh text eol=lf
+packaging/linux/* text eol=lf

@@ -1,6 +1,4 @@
-// DEBUG_SAULO: temporary developer-only intro bypass; remove during final release review.
-
-#include "debug_saulo_no_intro.h"
+#include "skip_intro.h"
 
 #include <atomic>
 #include <bit>
@@ -14,7 +12,7 @@
 #include <rex/hook.h>
 #include <rex/logging.h>
 
-REXCVAR_DEFINE_BOOL(debug_saulo_no_intro, false, "DEBUG_SAULO", "Skip the startup logo movies");
+REXCVAR_DEFINE_BOOL(crackdown_skip_intro, false, "Crackdown", "Start directly at the title screen");
 
 namespace {
 
@@ -88,18 +86,18 @@ bool IsPreTitleMovie(uint8_t* base, uint32_t name_object) {
 
 }  // namespace
 
-void InstallDebugSauloNoIntro() {
-  REXLOG_INFO("[DEBUG_SAULO][NoIntro] requested={}", REXCVAR_GET(debug_saulo_no_intro) ? 1 : 0);
+void InstallSkipIntro() {
+  REXLOG_INFO("[SkipIntro] requested={}", REXCVAR_GET(crackdown_skip_intro) ? 1 : 0);
 }
 
 REX_EXTERN(__imp__sub_826A8940);
 REX_HOOK_RAW(sub_826A8940) {
-  const bool skip = REXCVAR_GET(debug_saulo_no_intro) && ctx.r3.u32 <= 1;
+  const bool skip = REXCVAR_GET(crackdown_skip_intro) && ctx.r3.u32 <= 1;
   if (g_movie_calls.fetch_add(1) < kMovieCallLogLimit) {
-    REXLOG_INFO("[DEBUG_SAULO][NoIntro] engine_movie index={} skipped={}", ctx.r3.u32, skip ? 1 : 0);
+    REXLOG_INFO("[SkipIntro] engine_movie index={} skipped={}", ctx.r3.u32, skip ? 1 : 0);
   }
   if (skip) {
-    if (!g_active_logged.exchange(true)) REXLOG_INFO("[DEBUG_SAULO][NoIntro] active");
+    if (!g_active_logged.exchange(true)) REXLOG_INFO("[SkipIntro] active");
     return;
   }
   __imp__sub_826A8940(ctx, base);
@@ -108,12 +106,12 @@ REX_HOOK_RAW(sub_826A8940) {
 REX_EXTERN(__imp__sub_8232EA18);
 REX_EXTERN(__imp__sub_82624A30);
 REX_HOOK_RAW(sub_82624A30) {
-  if (!REXCVAR_GET(debug_saulo_no_intro) || !IsPreTitleMovie(base, ctx.r4.u32)) {
+  if (!REXCVAR_GET(crackdown_skip_intro) || !IsPreTitleMovie(base, ctx.r4.u32)) {
     __imp__sub_82624A30(ctx, base);
     return;
   }
   if (g_xui_skips.fetch_add(1) < kXuiSkipLogLimit) {
-    REXLOG_INFO("[DEBUG_SAULO][NoIntro] xui_skip scene={}", MovieNameLower(base, ctx.r4.u32));
+    REXLOG_INFO("[SkipIntro] xui_skip scene={}", MovieNameLower(base, ctx.r4.u32));
   }
 
   const uint64_t r3 = ctx.r3.u64, r4 = ctx.r4.u64, r5 = ctx.r5.u64, r6 = ctx.r6.u64, r7 = ctx.r7.u64;
@@ -140,7 +138,7 @@ REX_HOOK_RAW(sub_82624A30) {
 REX_EXTERN(__imp__sub_826544E0);
 REX_EXTERN(__imp__sub_82653FC0);
 REX_HOOK_RAW(sub_82653FC0) {
-  if (!REXCVAR_GET(debug_saulo_no_intro) || g_start_reached.load()) {
+  if (!REXCVAR_GET(crackdown_skip_intro) || g_start_reached.load()) {
     __imp__sub_82653FC0(ctx, base);
     return;
   }
@@ -148,7 +146,7 @@ REX_HOOK_RAW(sub_82653FC0) {
   const uint32_t state = ReadBE32(base, frame_object + kFrameObjectStateOffset);
   if (state == kSequenceStateStartPrompt && ReadByte(base, kPresentationFlagAddress) == 0) {
     g_start_reached.store(true);
-    REXLOG_INFO("[DEBUG_SAULO][NoIntro] start_prompt_reached");
+    REXLOG_INFO("[SkipIntro] start_prompt_reached");
   }
   const bool done = ReadByte(base, frame_object + 24) != 0;
   if (done || state < kSplashFirstState || state > kSplashLastState) {
@@ -156,7 +154,7 @@ REX_HOOK_RAW(sub_82653FC0) {
     return;
   }
   if (g_splash_skips.fetch_add(1) < kSplashSkipLogLimit) {
-    REXLOG_INFO("[DEBUG_SAULO][NoIntro] splash_skip id=sequence_state_{}", state);
+    REXLOG_INFO("[SkipIntro] splash_skip id=sequence_state_{}", state);
   }
   ctx.r3.u64 = frame_object - kFrameObjectStateOffset;
   __imp__sub_826544E0(ctx, base);

@@ -1,5 +1,16 @@
-# ReXGlue runtime settings, read from <exe dir>/crackdown.toml.
+# ReXGlue runtime settings, read from <exe dir>/crackdown.toml. The launcher's choices are saved in
+# user_data/settings.toml, which is loaded after this file.
+
 # Without a GPU plugin the runtime has no GPU emulation.
 gpu_plugin = "xenos"
 log_max_file_size_mb = 30
 log_max_files = 2
+
+# The guest video mode would otherwise follow the window size.
+video_mode_width = 1280
+video_mode_height = 720
+
+fullscreen = false
+window_width = 1280
+window_height = 720
+monitor = 1

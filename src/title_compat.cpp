@@ -1,28 +1,23 @@
-// Compatibility guards for title audio: a null-handle bypass for one audio teardown caller, and
-// retirement of replaced music instances so each one is released once.
+// Compatibility guards for title audio: a null-handle bypass for one audio teardown caller, and the escape that
+// lets the audio workers leave their rendezvous when the title is terminated.
 
 #include "runtime_health.h"
 
 #include <atomic>
-#include <bit>
 #include <cstring>
 
 #include <rex/hook.h>
 #include <rex/logging.h>
+#include <rex/system/kernel_state.h>
 
 REX_EXTERN(__imp__sub_82A49908);
-REX_EXTERN(__imp__sub_82265418);
 
 namespace {
 
 constexpr uint32_t kNullAudioCallerSite = 0x8225D5F0;
-constexpr uint32_t kMusicInstanceCount = 0x82DE2538;
-constexpr uint32_t kMusicFixLineLimit = 8;
 
-std::atomic<uint32_t> g_music_fix_lines{0};
-
-// The slot teardown at 8225D5F0 selects its no-release path through the out byte, so setting it
-// skips the release of the null handle; the slot state word is cleared to leave the slot idle.
+// The slot teardown at 8225D5F0 selects its no-release path through the out byte, which also skips the slot's own
+// idle reset (offsets 64, 70-73), so the reset is done here.
 void SkipNullAudioObject(uint8_t* base, uint32_t out_flag, uint32_t slot) {
   static std::atomic<bool> logged{false};
   if (!logged.exchange(true)) {
@@ -30,32 +25,14 @@ void SkipNullAudioObject(uint8_t* base, uint32_t out_flag, uint32_t slot) {
   }
   *rex::memory::GuestPtr<uint8_t*>(base, out_flag) = 1;
   std::memset(rex::memory::GuestPtr<uint8_t*>(base, slot + 12), 0, sizeof(uint32_t));
-}
-
-uint32_t LoadWord(uint8_t* base, uint32_t addr) {
-  uint32_t value = 0;
-  std::memcpy(&value, rex::memory::GuestPtr<const uint8_t*>(base, addr), sizeof(value));
-  return std::byteswap(value);
-}
-
-void StoreWord(uint8_t* base, uint32_t addr, uint32_t value) {
-  value = std::byteswap(value);
-  std::memcpy(rex::memory::GuestPtr<uint8_t*>(base, addr), &value, sizeof(value));
+  *rex::memory::GuestPtr<uint8_t*>(base, slot + 64) = 0;
+  *rex::memory::GuestPtr<uint8_t*>(base, slot + 70) = 0;
+  *rex::memory::GuestPtr<uint8_t*>(base, slot + 71) = 0;
+  *rex::memory::GuestPtr<uint8_t*>(base, slot + 72) = 0;
+  *rex::memory::GuestPtr<uint8_t*>(base, slot + 73) = 1;
 }
 
 }  // namespace
-
-// sub_82265418 releases every listed music instance before it starts the new track, and the
-// list is never otherwise cleared, so the released entries are reset to keep them from being
-// released again on the next track change.
-REX_HOOK_RAW(sub_82265418) {
-  const uint32_t retired = LoadWord(base, kMusicInstanceCount);
-  __imp__sub_82265418(ctx, base);
-  StoreWord(base, kMusicInstanceCount, 0);
-  if (g_music_fix_lines.fetch_add(1) < kMusicFixLineLimit) {
-    REXLOG_INFO("[DEBUG_SAULO][MusicFix] retired_instances={} list_reset=1", retired);
-  }
-}
 
 // The 031 caller-specific bypass. Other callers of sub_82A49908 keep the original call.
 REX_HOOK_RAW(sub_82A49908) {
@@ -71,4 +48,11 @@ REX_HOOK_RAW(sub_82A49908) {
     rex::ObserveRuntime("FAULT", "guest_null_argument", 0x82A49908, ctx.lr, ctx.r1.u32);
   }
   __imp__sub_82A49908(ctx, base);
+}
+
+// Codegen hook at the spin of sub_82A50000 (config/overrides.toml). The audio workers wait there for each other
+// without a kernel wait, so one whose partner already stopped for title termination would run guest code forever.
+bool crackdown_audio_barrier_escape() {
+  const auto* kernel = rex::system::kernel_state();
+  return kernel && kernel->is_terminating_title();
 }

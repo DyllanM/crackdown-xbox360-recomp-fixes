@@ -1,6 +1,7 @@
 # ReXGlue runtime and GPU plugin freshness. Without patches the installed files are the stock release; with patches
 # they are the files built from the baseline, the build settings and patches\rexglue-sdk.
 
+$RexglueRuntimePlatform = 'windows'
 $RexglueRuntimePreset = 'win-amd64'
 $RexglueRuntimeBuildFlags = '-march=x86-64-v2'
 $RexglueRuntimeTargets = @('rexruntime', 'rexgpu-xenos')
@@ -27,16 +28,9 @@ function Get-RexglueLayout([string]$Root, [string]$Config = 'RelWithDebInfo') {
     }
 }
 
-# The patches in ordinal name order. patches\rexglue-sdk holds only baseline.env and *.patch files.
+# The patches that apply on Windows, in ordinal name order. The Linux ones belong to build-patched-rexruntime.sh.
 function Get-RexglueRuntimePatches([string]$PatchDir) {
-    $entries = @(Get-ChildItem -LiteralPath $PatchDir -Force)
-    $unexpected = @($entries | Where-Object { $_.PSIsContainer -or ($_.Name -ne 'baseline.env' -and $_.Extension -ne '.patch') })
-    if ($unexpected.Count) {
-        throw "patches\rexglue-sdk may hold only baseline.env and *.patch files: $(($unexpected | ForEach-Object { $_.Name }) -join ', ')"
-    }
-    $names = [string[]]@($entries | Where-Object { $_.Extension -eq '.patch' } | ForEach-Object { $_.Name })
-    [Array]::Sort($names, [StringComparer]::Ordinal)
-    return @($names | ForEach-Object { [pscustomobject]@{ Name = $_; Path = Join-Path $PatchDir $_ } })
+    return Get-PlatformPatches $PatchDir $RexglueRuntimePlatform
 }
 
 # Runtime, import library and GPU plugin for the requested configuration.
@@ -63,6 +57,7 @@ function Get-RexglueRuntimeInputs($Layout, [string]$Mode) {
     [Array]::Sort($baselineKeys, [StringComparer]::Ordinal)
     foreach ($key in $baselineKeys) { $inputs["baseline.$key"] = $Layout.Baseline[$key] }
     $inputs['mode'] = $Mode
+    $inputs['platform'] = $RexglueRuntimePlatform
     if ($Mode -eq 'stock') { return $inputs }
     $inputs['build.preset'] = $RexglueRuntimePreset
     $inputs['build.flags'] = $RexglueRuntimeBuildFlags

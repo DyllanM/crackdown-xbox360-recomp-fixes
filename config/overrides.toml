@@ -10,3 +10,11 @@
 0x825322D8 = {}
 0x82A1DD18 = {}
 0x823F0668 = {}
+
+# The rendezvous spin in sub_82A50000 (audio workers) has no kernel wait, so title termination cannot stop it.
+[[midasm_hook]]
+address = 0x82A500DC
+name = "crackdown_audio_barrier_escape"
+registers = []
+after_instruction = false
+return_on_true = true

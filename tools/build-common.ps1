@@ -23,6 +23,33 @@ function Test-PathUnder([string]$Path, [string]$Folder) {
         (Get-NormalizedPath $Path).StartsWith((Get-NormalizedPath $Folder) + '\', [StringComparison]::OrdinalIgnoreCase)
 }
 
+# NNNN-name.patch applies on every platform, NNNN-name.windows.patch only on Windows and NNNN-name.linux.patch only
+# on Linux. The numbers are unique, so the order is unambiguous.
+$PatchNamePattern = '^(?<number>[0-9]{4})-[a-z0-9]+(-[a-z0-9]+)*(\.(?<platform>windows|linux))?\.patch$'
+
+# The patches in $PatchDir that apply on $Platform, in ordinal name order. The folder holds only baseline.env and
+# *.patch files.
+function Get-PlatformPatches([string]$PatchDir, [string]$Platform) {
+    $entries = @(Get-ChildItem -LiteralPath $PatchDir -Force)
+    $unexpected = @($entries | Where-Object { $_.PSIsContainer -or ($_.Name -ne 'baseline.env' -and $_.Extension -ne '.patch') })
+    if ($unexpected.Count) {
+        throw "patches\rexglue-sdk may hold only baseline.env and *.patch files: $(($unexpected | ForEach-Object { $_.Name }) -join ', ')"
+    }
+    $selected = @{}
+    $numbers = @{}
+    foreach ($file in @($entries | Where-Object { $_.Extension -eq '.patch' })) {
+        if ($file.Name -notmatch $PatchNamePattern) { throw "patches\rexglue-sdk\$($file.Name) is not named NNNN-name[.windows|.linux].patch" }
+        $number = $Matches['number']
+        if ($numbers.ContainsKey($number)) { throw "patches\rexglue-sdk\$($file.Name) and $($numbers[$number]) share the number $number" }
+        $numbers[$number] = $file.Name
+        if ($Matches['platform'] -and $Matches['platform'] -ne $Platform) { continue }
+        $selected[$file.Name] = $file
+    }
+    $names = [string[]]@($selected.Keys)
+    [Array]::Sort($names, [StringComparer]::Ordinal)
+    return @($names | ForEach-Object { [pscustomobject]@{ Name = $_; Path = $selected[$_].FullName } })
+}
+
 # KEY=VALUE lines in file order.
 function Read-KeyValueFile([string]$Path) {
     $values = [ordered]@{}
