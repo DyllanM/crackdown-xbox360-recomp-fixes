@@ -28,10 +28,28 @@ Patches must not move virtual functions or data members of classes the generated
 | 0021 | windows | high-resolution sleep |
 | 0022 | all | log guest MSAA usage |
 | 0023 | all | UI repaint once per guest frame (was 3 per frame at 30 fps) |
+| 0024 | all | GPU register writes: block copy for render-state, constant and fetch-constant runs (Geometry Wars 0004) |
+| 0025 | all | draw path: primitive cache threshold and overlap fix, reused request allocation, Xenia defaults for `clear_memory_page_state` and `execute_unclipped_draw_vs_on_cpu` (Geometry Wars 0006) |
+| 0026 | all | guest critical sections poll briefly before a kernel wait (Geometry Wars 0008) |
+| 0027 | linux | idle command thread waits without the alertable flag (Geometry Wars 0020) |
+| 0028 | linux | `WaitMultiple` backs off on lock contention instead of spinning (Geometry Wars 0021) |
+| 0029 | all | DEBUG_SAULO frame event counters (vblank, command processor swap, guest output, host present); remove with `src/debug_saulo_frame30.cpp` |
+| 0030 | all | render target transfers cut around rectangles a draw provably overwrites; stencil bits tracked per depth target (Hard Corps 0005) |
+| 0031 | all | per-tile stencil bits and a conservative first row for ownership claims (Hard Corps 0007) |
+| 0032 | all | resolve dumps only EDRAM tiles drawn since the last dump (Hard Corps 0008) |
+| 0033 | all | command processor guest memory writes wake `WaitOnAddress`/futex waiters; `src/gpu_fence_wait.cpp` is the waiter (Hard Corps 0009) |
+| 0034 | windows | early submission only while fewer than three are in flight, `PollBackgroundWork` finishes pending occlusion queries, no `direct_host_resolve` preflight (Hard Corps 0011 without its occlusion rewrite, which 0006 replaces) |
+| 0035-0037 | windows | D3D12 halves of 0030-0032 (Hard Corps 0012-0014) |
+| 0038-0040 | linux | Vulkan halves of 0030-0032, submissions and occlusion queries (Hard Corps 0016-0018) |
+| 0041-0043 | all, windows, linux | resolves copied straight into the textures that sample them (`resolve_copy_into_textures`, Hard Corps 0022-0024) |
+| 0044-0046 | all, windows, linux | above Original resolution, a resolve kept only in its texture is written back to memory when needed (`resolve_defer_writeback`, Hard Corps 0030-0032) |
+| 0047-0049 | all, windows, linux | `internal_render_scale` 100/75/50: host render targets below the render resolution (Hard Corps 0036-0038, cvar renamed) |
 
-Ideas from the reference ports that were not ported because Crackdown showed no evidence for them (GPU
-render-target/EDRAM/resolve changes, fence wake, critical-section spin, bulk register and draw paths) need
-gameplay profiling first.
+ThinLTO (`CMakeLists.txt`) covers Release and RelWithDebInfo; the LTO cache is `<build dir>/lto-cache`.
+
+Not ported: the Geometry Wars frame-limiter hook (`src/frame_pacing.cpp` paces frames itself).
 
 The XAudio worker rendezvous in `sub_82A50000` has no kernel wait; on title termination a codegen
-`[[midasm_hook]]` in `config/overrides.toml` lets it return (`crackdown_audio_barrier_escape`).
+`[[midasm_hook]]` in `config/overrides.toml` lets it return (`crackdown_audio_barrier_escape`). The 13
+`crackdown_variable_step_frame_ms` hooks there give the title's inline 16 ms frame-time sites the host-paced frame
+time above 60 FPS.

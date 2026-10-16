@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -17,9 +18,11 @@
 
 #include "cache_device.h"
 #include "debug_saulo_diagnostics.h"
+#include "debug_saulo_frame30.h"
 #include "frame_counter.h"
 #include "frame_rate.h"
 #include "game_files.h"
+#include "internal_render_scale.h"
 #include "launcher.h"
 #include "platform.h"
 #include "runtime_health.h"
@@ -76,6 +79,7 @@ class CrackdownApp : public rex::ReXApp {
       REXLOG_INFO("{}", message.text);
     }
     crackdown::LoadPlayerSettings(crackdown::PlayerSettingsPath(user_data_root()));
+    crackdown::ApplyGraphicsAdapter();
   }
 
   void OnConfigureFonts(ImFontAtlas* atlas) override {
@@ -103,6 +107,7 @@ class CrackdownApp : public rex::ReXApp {
       show_launcher_ = true;
     }
     if (!show_launcher_) {
+      crackdown::ApplyInternalRenderPath();
       crackdown::ApplyMultisampling();
       return defaults;
     }
@@ -143,6 +148,9 @@ class CrackdownApp : public rex::ReXApp {
   }
 
   void OnPostSetup() override {
+    REXLOG_INFO("{}", crackdown::DescribeInternalRenderResolution(
+                          std::max(1, std::atoi(rex::cvar::GetFlagByName("resolution_scale").c_str())),
+                          std::atoi(rex::cvar::GetFlagByName("internal_render_scale").c_str())));
     if (runtime()) {
       MountCacheDevice(runtime()->file_system(), user_data_root());
     }
@@ -158,6 +166,7 @@ class CrackdownApp : public rex::ReXApp {
       crackdown::CreateFrameCounter(imgui_drawer());
     }
     InstallDebugSauloFaultProbe();
+    StartDebugSauloFrame30();
     InstallSkipIntro();
   }
 
@@ -175,6 +184,7 @@ class CrackdownApp : public rex::ReXApp {
       input->Shutdown();
     }
     DetachWindowHost();
+    StopDebugSauloFrame30();
     crackdown::DetachFrameRate();
     StopRuntimeHealth();
   }

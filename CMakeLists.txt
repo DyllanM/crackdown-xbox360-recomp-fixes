@@ -51,9 +51,13 @@ get_directory_property(CRACKDOWN_TRG_VERSION DIRECTORY "${_trg_dir}" DEFINITION 
 set(CRACKDOWN_SOURCES
     src/main.cpp
     src/cache_device.cpp
+    src/crt_native.cpp
     src/frame_counter.cpp
+    src/frame_pacing.cpp
     src/frame_rate.cpp
     src/game_files.cpp
+    src/gpu_fence_wait.cpp
+    src/graphics_adapters.cpp
     src/launcher.cpp
     src/platform.cpp
     src/runtime_health.cpp
@@ -64,6 +68,7 @@ set(CRACKDOWN_SOURCES
     src/window_host.cpp
     src/xdvdfs.cpp
     src/debug_saulo_diagnostics.cpp
+    src/debug_saulo_frame30.cpp
     src/skip_intro.cpp
 )
 
@@ -97,7 +102,7 @@ target_compile_definitions(crackdown PRIVATE
     CRACKDOWN_TRG_VERSION="${CRACKDOWN_TRG_VERSION}")
 
 if(WIN32)
-    target_link_libraries(crackdown PRIVATE shcore synchronization)
+    target_link_libraries(crackdown PRIVATE shcore synchronization dxgi)
     # The SDK stages its DLLs only when the program links, so a rebuilt runtime or GPU plugin has to make it link
     # again; the check and staging targets below and tools/build.ps1 also verify the staged copies.
     foreach(_sdk_dll rexruntime rexruntimed rexruntimerd rexgpu-xenos rexgpu-xenosd rexgpu-xenosrd)
@@ -143,14 +148,14 @@ add_custom_target(crackdown_rexglue_staging ALL
 )
 add_dependencies(crackdown_rexglue_staging crackdown)
 
-# ThinLTO for Release (what tools/package-release.ps1 builds); the runtime and GPU plugin are prebuilt. Debug compiles
-# at -O0, which marks every function optnone, so LTO would optimize nothing there, and RelWithDebInfo stays quick to
-# link for development.
+# ThinLTO in Release and RelWithDebInfo; the runtime and GPU plugin are prebuilt. Debug compiles at -O0, which marks
+# every function optnone, so LTO would optimize nothing there.
 function(crackdown_enable_thinlto target)
-    set(_lto "$<CONFIG:Release>")
+    set(_lto "$<CONFIG:Release,RelWithDebInfo>")
     if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
         # lld-link runs the LTO backend at -O2 unless told otherwise; Release compiles at -O3.
-        set(_link -flto=thin "-Wl,/opt:lldlto=3" "-Wl,/lldltocache:${CMAKE_BINARY_DIR}/lto-cache")
+        set(_link -flto=thin "$<$<CONFIG:Release>:-Wl,/opt:lldlto=3>"
+            "-Wl,/lldltocache:${CMAKE_BINARY_DIR}/lto-cache")
     elseif(UNIX AND NOT APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         set(_link -flto=thin -fuse-ld=lld "-Wl,--thinlto-cache-dir=${CMAKE_BINARY_DIR}/lto-cache")
     else()

@@ -1,6 +1,7 @@
 // Temporary DEBUG_SAULO runtime probes: guest null reads, HEAD draws, mixer divide and gameplay start.
 
 #include "debug_saulo_diagnostics.h"
+#include "debug_saulo_frame30.h"
 #include "runtime_health.h"
 
 #include <array>
@@ -209,6 +210,9 @@ REX_HOOK_RAW(sub_82AB57F8) {
 // The first HUD gather of a session marks gameplay start for the runtime health observer.
 REX_EXTERN(__imp__sub_823FD138);
 REX_HOOK_RAW(sub_823FD138) {
-  if (!g_gameplay_started.exchange(true)) RuntimeHealthGameplayStarted();
+  if (!g_gameplay_started.exchange(true)) {
+    RuntimeHealthGameplayStarted();
+    DebugSauloFrame30GameplayStarted();
+  }
   __imp__sub_823FD138(ctx, base);
 }

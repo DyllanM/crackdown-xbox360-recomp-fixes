@@ -1,0 +1,5 @@
+crackdown_add_test(internal_render_scale_tests SOURCES internal_render_scale_tests.cpp)
+crackdown_add_test(graphics_adapter_tests SOURCES graphics_adapter_tests.cpp "${CRACKDOWN_SRC_DIR}/graphics_adapters.cpp")
+if(WIN32)
+    target_link_libraries(graphics_adapter_tests PRIVATE dxgi d3d12)
+endif()

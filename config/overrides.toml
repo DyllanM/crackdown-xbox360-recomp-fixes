@@ -18,3 +18,82 @@ name = "crackdown_audio_barrier_escape"
 registers = []
 after_instruction = false
 return_on_true = true
+
+# The variable-step frame time (`li rN,16` where the fixed step would take 33 ms) follows the selected frame rate.
+[[midasm_hook]]
+address = 0x82287194
+name = "crackdown_variable_step_frame_ms"
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x82388E98
+name = "crackdown_variable_step_frame_ms"
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x823F0ED8
+name = "crackdown_variable_step_frame_ms"
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x8248F278
+name = "crackdown_variable_step_frame_ms"
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x824F9D1C
+name = "crackdown_variable_step_frame_ms"
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x824FB408
+name = "crackdown_variable_step_frame_ms"
+registers = ["r10"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x82505EF4
+name = "crackdown_variable_step_frame_ms"
+registers = ["r9"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x8257AB0C
+name = "crackdown_variable_step_frame_ms"
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x8259A3CC
+name = "crackdown_variable_step_frame_ms"
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x825E1230
+name = "crackdown_variable_step_frame_ms"
+registers = ["r27"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x8265178C
+name = "crackdown_variable_step_frame_ms"
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x826517F0
+name = "crackdown_variable_step_frame_ms"
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x826A7918
+name = "crackdown_variable_step_frame_ms"
+registers = ["r11"]
+after_instruction = true

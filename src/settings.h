@@ -15,9 +15,11 @@
 REXCVAR_DECLARE(bool, crackdown_launcher);
 REXCVAR_DECLARE(bool, crackdown_skip_launcher);
 REXCVAR_DECLARE(bool, crackdown_skip_intro);
+REXCVAR_DECLARE(int32_t, crackdown_frame_rate);
 REXCVAR_DECLARE(bool, crackdown_show_fps);
 REXCVAR_DECLARE(bool, crackdown_show_frame_counter);
 REXCVAR_DECLARE(bool, crackdown_msaa_compatibility);
+REXCVAR_DECLARE(std::string, crackdown_graphics_adapter);
 REXCVAR_DECLARE(int32_t, crackdown_launcher_x);
 REXCVAR_DECLARE(int32_t, crackdown_launcher_y);
 REXCVAR_DECLARE(int32_t, crackdown_launcher_width);
@@ -46,6 +48,14 @@ void LoadPlayerSettings(const std::filesystem::path& path);
 // Sets the Xenos native_2x_msaa cvar from the launcher's Multisampling choice. Call once the GPU plugin has
 // registered its cvars and before emulation starts.
 void ApplyMultisampling();
+
+// Windows: makes the D3D12 render target path the host one when Internal render resolution is below 100%. Call once
+// the launcher choices are applied and before the command processor is created.
+void ApplyInternalRenderPath();
+
+// Sets d3d12_adapter from the launcher's Graphics card choice. Call once the player settings are loaded and before the
+// graphics device is created; Automatic leaves the SDK's own preference alone.
+void ApplyGraphicsAdapter();
 
 // Caps the requested window size to the display the `monitor` setting names. Call before the window exists.
 void FitWindowToDisplay();
@@ -85,7 +95,7 @@ class GameSettings final : public trg::SettingsStore {
 
   // Records the window settings this process creates its window with.
   void MarkWindowCreated();
-  // Whether the pending window size, monitor or VSync needs a new window.
+  // Whether the pending window size, monitor, VSync or graphics card needs a new process.
   bool WindowChanged() const;
 
  private:

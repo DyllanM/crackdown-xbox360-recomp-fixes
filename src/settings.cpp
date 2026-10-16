@@ -14,6 +14,9 @@
 
 #include "trg/settings.h"
 
+#include "frame_timing.h"
+#include "graphics_adapters.h"
+#include "internal_render_scale.h"
 #include "multisampling.h"
 #include "platform.h"
 #include "settings_file.h"
@@ -22,12 +25,17 @@ REXCVAR_DEFINE_BOOL(crackdown_launcher, true, "Crackdown",
                     "Show the launcher before the game starts (hold Shift at start to force it)");
 REXCVAR_DEFINE_BOOL(crackdown_skip_launcher, false, "Crackdown",
                     "Skip the launcher once (set when the launcher restarts the game)");
+REXCVAR_DEFINE_INT32(crackdown_frame_rate, 60, "Crackdown",
+                     "Frame rate: 30 (the console's), 60, 90, 120, 144, 165, 240, or 0 for unlimited; other values "
+                     "use 60");
 REXCVAR_DEFINE_BOOL(crackdown_show_fps, true, "Crackdown", "Show the frame rate in the window title");
 REXCVAR_DEFINE_BOOL(crackdown_show_frame_counter, false, "Crackdown",
                     "Show the frame rate in the corner (F2 toggles it while playing)");
 REXCVAR_DEFINE_BOOL(crackdown_msaa_compatibility, false, "Crackdown",
                     "Draw the game's 2x MSAA render targets with 4x MSAA, for GPUs or drivers whose native 2x "
                     "MSAA misrenders (sets native_2x_msaa)");
+REXCVAR_DEFINE_STRING(crackdown_graphics_adapter, "auto", "Crackdown",
+                      "Graphics card: auto, or the index d3d12_adapter takes (applied at start)");
 REXCVAR_DEFINE_INT32(crackdown_launcher_x, 0, "Crackdown", "Launcher window left edge, written by the launcher");
 REXCVAR_DEFINE_INT32(crackdown_launcher_y, 0, "Crackdown", "Launcher window top edge, written by the launcher");
 REXCVAR_DEFINE_INT32(crackdown_launcher_width, 0, "Crackdown",
@@ -44,6 +52,7 @@ namespace {
 const std::vector<std::string> kGameSettingKeys = {
     "crackdown_launcher",
     "crackdown_skip_intro",
+    "crackdown_frame_rate",
     "crackdown_show_fps",
     "crackdown_show_frame_counter",
     "fullscreen",
@@ -51,8 +60,10 @@ const std::vector<std::string> kGameSettingKeys = {
     "window_height",
     "monitor",
     kTearingSetting,
+    "crackdown_graphics_adapter",
     "present_letterbox",
     "resolution_scale",
+    "internal_render_scale",
     "swap_post_effect",
     "crackdown_msaa_compatibility",
     "anisotropic_override",
@@ -64,6 +75,7 @@ const std::vector<std::string> kWindowKeys = {
     "window_height",
     "monitor",
     kTearingSetting,
+    "crackdown_graphics_adapter",
 };
 
 bool IsWindowKey(std::string_view key) {
@@ -207,6 +219,9 @@ void GameSettings::Capture(const std::filesystem::path& player_file, const std::
   unregistered_.clear();
   for (const std::string& key : kGameSettingKeys) {
     saved_[key] = rex::cvar::GetFlagByName(key);
+    if (key == "crackdown_frame_rate") {
+      saved_[key] = std::to_string(ParseFrameRate(saved_[key]));
+    }
     if (!rex::cvar::GetFlagInfo(key)) {
       unregistered_.insert(key);
     }
@@ -308,6 +323,7 @@ void GameSettings::Apply() const {
     }
     rex::cvar::SetFlagByName(key, value);
   }
+  ApplyInternalRenderPath();
   ApplyMultisampling();
 }
 
@@ -323,6 +339,39 @@ void GameSettings::ApplyDisplayMode() const {
 void ApplyMultisampling() {
   rex::cvar::SetFlagByName("native_2x_msaa",
                            Native2xMsaaFor(REXCVAR_GET(crackdown_msaa_compatibility)) ? "true" : "false");
+}
+
+void ApplyInternalRenderPath() {
+#if defined(_WIN32)
+  const std::optional<std::string_view> path =
+      RequiredRenderTargetPath(std::atoi(rex::cvar::GetFlagByName("internal_render_scale").c_str()),
+                               rex::cvar::GetFlagByName("render_target_path_d3d12"));
+  if (path && rex::cvar::SetFlagByName("render_target_path_d3d12", *path)) {
+    REXLOG_INFO("Internal render resolution: using D3D12 host render targets");
+  }
+#endif
+}
+
+void ApplyGraphicsAdapter() {
+#if defined(_WIN32)
+  const std::string setting = REXCVAR_GET(crackdown_graphics_adapter);
+  if (!ParseGraphicsAdapter(setting)) {
+    REXLOG_INFO("Graphics card: Automatic");
+    return;
+  }
+  const std::vector<GraphicsAdapter> adapters = ListGraphicsAdapters();
+  const int index = ResolveGraphicsAdapter(setting, adapters);
+  if (index < 0) {
+    REXLOG_WARN("Graphics card {} is not available, using Automatic", setting);
+    return;
+  }
+  rex::cvar::SetFlagByName("d3d12_adapter", std::to_string(index));
+  for (const GraphicsAdapter& adapter : adapters) {
+    if (adapter.index == index) {
+      REXLOG_INFO("Graphics card: {} (adapter {})", adapter.name, index);
+    }
+  }
+#endif
 }
 
 void GameSettings::MarkWindowCreated() {

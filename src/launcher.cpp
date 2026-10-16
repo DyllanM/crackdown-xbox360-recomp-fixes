@@ -21,7 +21,10 @@
 #include "trg/launcher.h"
 #include "trg/platform.h"
 
+#include "frame_timing.h"
 #include "game_files.h"
+#include "graphics_adapters.h"
+#include "internal_render_scale.h"
 #include "platform.h"
 #include "settings.h"
 
@@ -75,10 +78,6 @@ std::string Size(int width, int height) {
   return std::to_string(width) + " \xC3\x97 " + std::to_string(height);
 }
 
-// The guest video mode is pinned to this in crackdown.toml; resolution_scale multiplies it.
-constexpr int kPresentedWidth = 1280;
-constexpr int kPresentedHeight = 720;
-
 std::vector<trg::Option> RenderResolutionOptions() {
   std::vector<trg::Option> options;
   for (int scale = 1; scale <= 4; ++scale) {
@@ -114,7 +113,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         cb_(std::move(callbacks)),
         settings_(settings),
         game_files_(CheckAndLogGameFiles(paths_.game_dir).state),
-        monitors_(ListMonitors()) {
+        monitors_(ListMonitors()),
+        graphics_adapters_(ListGraphicsAdapters()) {
     g_dialog = this;
     launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
     if (WindowFullscreen()) {
@@ -356,9 +356,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
          [this] { return game_files_ != GameFiles::kReady; }},
         {"Display", "Window, monitor and how the picture fits your screen.",
          [this](trg::Ui& ui) { PageDisplay(ui); }},
-        {"Graphics", "Render resolution, anti-aliasing and texture filtering.",
-         [](trg::Ui& ui) { PageGraphics(ui); }},
-        {"Gameplay", "What the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
+        {"Graphics", "Graphics card, render resolution, anti-aliasing and texture filtering.",
+         [this](trg::Ui& ui) { PageGraphics(ui); }},
+        {"Gameplay", "Frame rate, and what the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
         {"Controls", "Controller and keyboard.", [](trg::Ui& ui) { PageControls(ui); }},
         {"About", "About this port, and where your files and settings live.",
          [this](trg::Ui& ui) { PageAbout(ui); }},
@@ -591,11 +591,27 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     }
   }
 
-  static void PageGraphics(trg::Ui& ui) {
+  void PageGraphics(trg::Ui& ui) {
+    if (!graphics_adapters_.empty()) {
+      std::vector<trg::Option> adapters;
+      for (const auto& [value, label] : GraphicsAdapterOptions(
+               graphics_adapters_, settings_.Get("crackdown_graphics_adapter", kGraphicsAdapterAuto))) {
+        adapters.push_back({value, label});
+      }
+      ui.Combo("Graphics card",
+               "Selects which GPU renders the game. Automatic uses the recommended high-performance GPU. "
+               "A GPU chosen here overrides automatic selection and restarts the game window.",
+               "crackdown_graphics_adapter", kGraphicsAdapterAuto, adapters);
+    }
     ui.Combo("Render resolution",
              "Draws the game at a multiple of its own picture, then scales it to the window. Higher is sharper and "
              "costs more GPU time. Window size is separate.",
              "resolution_scale", "1", RenderResolutionOptions());
+    ui.Combo("Internal render resolution",
+             "Renders the game internally at a lower resolution, then scales it to the selected render resolution. "
+             "Lower values improve GPU performance but reduce image sharpness.",
+             "internal_render_scale", "100",
+             {{"100", "100% Native"}, {"75", "75% Performance"}, {"50", "50% Low-end"}});
     ui.Choice("Anti-aliasing", "Smooths jagged edges after the frame is drawn. Extreme is softer but cleaner.",
               "swap_post_effect", "none", {{"none", "Off"}, {"fxaa", "FXAA"}, {"fxaa_extreme", "FXAA Extreme"}});
     ui.Toggle("Multisampling",
@@ -616,6 +632,14 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   static void PageGameplay(trg::Ui& ui) {
     ui.Toggle("Skip intro", "Start directly at the title screen", "crackdown_skip_intro", false, "Off", "On");
+    std::vector<trg::Option> frame_rates;
+    for (const auto& [value, label] : FrameRateOptions()) {
+      frame_rates.push_back({value, label});
+    }
+    ui.Combo("Frame rate",
+             "The most frames per second the game draws. Game speed stays the same at every rate; 30 is the "
+             "console's own timing.",
+             "crackdown_frame_rate", "60", frame_rates);
     ui.Toggle("Frame rate in title", "Shows the game's frame rate in the window title: Crackdown Recompiled | FPS: 60.00",
               "crackdown_show_fps", true, "Off", "On");
     ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 toggles it while playing.",
@@ -667,6 +691,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   GameSettings& settings_;
   GameFiles::State game_files_;
   std::vector<MonitorInfo> monitors_;
+  std::vector<GraphicsAdapter> graphics_adapters_;
   std::unique_ptr<trg::Launcher> launcher_;
   LauncherGamepad gamepad_;
   bool nav_taken_ = false;
