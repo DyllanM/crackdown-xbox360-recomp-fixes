@@ -19,6 +19,20 @@ registers = []
 after_instruction = false
 return_on_true = true
 
+# Sanitizes the mixed frame before XAudioSubmitRenderDriverFrame in sub_82A4BEF8; r4 is the frame address.
+[[midasm_hook]]
+address = 0x82A4BF40
+name = "crackdown_audio_pcm_firewall"
+registers = ["r4"]
+after_instruction = false
+
+# The wave safety timeout in sub_8225B0A8 adds one per update (`addi r11,r11,1`); it advances at 30 Hz at any frame rate.
+[[midasm_hook]]
+address = 0x8225B254
+name = "crackdown_audio_wave_timeout_tick"
+registers = ["r11", "r30"]
+after_instruction = true
+
 # The variable-step frame time (`li rN,16` where the fixed step would take 33 ms) follows the selected frame rate.
 [[midasm_hook]]
 address = 0x82287194

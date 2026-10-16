@@ -24,6 +24,7 @@
 #include <rex/ppc.h>
 
 #include "debug_saulo_frame30.h"
+#include "frame_pacing.h"
 #include "frame_timing.h"
 #include "settings.h"
 
@@ -60,6 +61,7 @@ constexpr uint32_t kVariableStepFrameMs = 16;
 
 std::atomic<uint32_t> g_step_bits{std::bit_cast<uint32_t>(1.0f / 60.0f)};
 std::atomic<uint32_t> g_frame_ms{kVariableStepFrameMs};
+std::atomic<double> g_original_steps{crackdown::FixedFrameStep(crackdown::kDefaultFrameRate).original_steps};
 
 // Only the main thread runs frames.
 FrameStep g_step = crackdown::FixedFrameStep(crackdown::kDefaultFrameRate);
@@ -149,6 +151,7 @@ void BeginFrame(int rate) {
     g_step = crackdown::FixedFrameStep(rate);
   }
   g_step_bits.store(std::bit_cast<uint32_t>(g_step.seconds_f), std::memory_order_relaxed);
+  g_original_steps.store(g_step.original_steps, std::memory_order_relaxed);
 }
 
 // +16 counts the title's 1/30 s steps; it only advances it in fixed-step mode, so it keeps that rate here.
@@ -255,4 +258,8 @@ void crackdown_variable_step_frame_ms(PPCRegister& frame_ms) {
   if (crackdown::HostPacedFrameRate(FrameRate())) {
     frame_ms.u64 = g_frame_ms.load(std::memory_order_relaxed);
   }
+}
+
+double crackdown::OriginalStepsPerUpdate() {
+  return HighFrameRate(FrameRate()) ? g_original_steps.load(std::memory_order_relaxed) : 1.0;
 }

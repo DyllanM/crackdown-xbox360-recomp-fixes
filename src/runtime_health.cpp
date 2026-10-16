@@ -1,6 +1,8 @@
 // Temporary DEBUG_SAULO runtime audit.
 #include "runtime_health.h"
 
+#include "audio_pcm_firewall.h"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -482,6 +484,7 @@ void Snapshot(const char* reason) {
   uint64_t nonzero[2]{}, zero[2]{}, unknown[2]{}, pending_open_groups = 0;
   Event fault;
   std::string counters;
+  const auto pcm = crackdown::AudioPcmFirewallCounts();
   {
     std::lock_guard lock(g.mutex);
     for (const auto& [id, character] : g.character_descriptors) {
@@ -508,7 +511,8 @@ void Snapshot(const char* reason) {
         "body_descriptor_nonzero_observations={} head_descriptor_nonzero_observations={} "
         "candidates={} vfs_probes={} found={} probe_misses={} logical_requests={} logical_success={} "
         "fallback_successes={} same_path_recoveries_approx={} final_failures={} native_open_failures={} "
-        "unrecovered_open_groups_after_10s={} unique_stubs={} dropped={} history_dumps={} suppressed_dumps={}",
+        "unrecovered_open_groups_after_10s={} unique_stubs={} dropped={} history_dumps={} suppressed_dumps={} "
+        "sanitized_nan={} sanitized_inf={} clamped_high={} clamped_low={} sanitized_frames={}",
         NowMs(), g.faults, g.invalid_functions, g.voices_created, g.voices_destroyed,
         g.xma_created, g.xma_released, g.xma_packets, g.xma_decodes, g.xma_errors,
         g.xma_fills, g.xma_pool_releases, g.gpu_rejects, g.invalid_resolve,
@@ -516,7 +520,8 @@ void Snapshot(const char* reason) {
         g.characters, nonzero[0], nonzero[1], zero[0], zero[1], unknown[0], unknown[1],
         g.body_words, g.head_words, g.candidate_count, g.vfs_requests, g.vfs_found, g.vfs_missing,
         g.logical_requests, g.logical_success, g.fallback_success, g.vfs_recoveries, g.logical_failure,
-        g.vfs_open_failed, pending_open_groups, g.stubs.size(), g.dropped, g.dump_count, g.suppressed_dumps);
+        g.vfs_open_failed, pending_open_groups, g.stubs.size(), g.dropped, g.dump_count, g.suppressed_dumps,
+        pcm.sanitized_nan, pcm.sanitized_inf, pcm.clamped_high, pcm.clamped_low, pcm.sanitized_frames);
     fault = g.last_fault;
     audio.assign(g.audio.begin(), g.audio.end());
     incidents.assign(g.incidents.begin(),g.incidents.end());

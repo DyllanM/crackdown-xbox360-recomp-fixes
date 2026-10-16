@@ -1,0 +1,1 @@
+crackdown_add_test(audio_wave_timeout_tests SOURCES audio_wave_timeout_tests.cpp)

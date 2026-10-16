@@ -44,6 +44,7 @@ Patches must not move virtual functions or data members of classes the generated
 | 0041-0043 | all, windows, linux | resolves copied straight into the textures that sample them (`resolve_copy_into_textures`, Hard Corps 0022-0024) |
 | 0044-0046 | all, windows, linux | above Original resolution, a resolve kept only in its texture is written back to memory when needed (`resolve_defer_writeback`, Hard Corps 0030-0032) |
 | 0047-0049 | all, windows, linux | `internal_render_scale` 100/75/50: host render targets below the render resolution (Hard Corps 0036-0038, cvar renamed) |
+| 0052 | all | codegen: bit-exact `vrsqrtefp` estimate (Xenia's table) instead of an exact 1/sqrt, which let the 3D sound arccos at `0x8225F910` return NaN (Crackdown Recomp SDK 0002); the helper is emitted into the generated `crackdown_pch.h` because the game compiles against the stock SDK headers; regenerate with `tools\codegen.ps1` |
 
 ThinLTO (`CMakeLists.txt`) covers Release and RelWithDebInfo; the LTO cache is `<build dir>/lto-cache`.
 
@@ -52,4 +53,5 @@ Not ported: the Geometry Wars frame-limiter hook (`src/frame_pacing.cpp` paces f
 The XAudio worker rendezvous in `sub_82A50000` has no kernel wait; on title termination a codegen
 `[[midasm_hook]]` in `config/overrides.toml` lets it return (`crackdown_audio_barrier_escape`). The 13
 `crackdown_variable_step_frame_ms` hooks there give the title's inline 16 ms frame-time sites the host-paced frame
-time above 60 FPS.
+time above 60 FPS. `crackdown_audio_wave_timeout_tick` at `0x8225B254` advances a wave's safety timeout at 30 Hz at any
+frame rate, so speech is not stopped early above 30 FPS.
