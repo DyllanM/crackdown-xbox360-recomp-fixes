@@ -3,6 +3,10 @@
 
 # Without a GPU plugin the runtime has no GPU emulation.
 gpu_plugin = "xenos"
+# The game reads resolved render targets on the CPU; without readback that memory stays stale.
+readback_resolve = "fast"
+# Copy back only resolves up to 256 KB; the large ones are not read on the CPU and cost frame rate.
+readback_resolve_max_bytes = 262144
 log_max_file_size_mb = 30
 log_max_files = 2
 

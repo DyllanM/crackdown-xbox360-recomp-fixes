@@ -1,0 +1,40 @@
+diff --git a/src/graphics/vulkan/command_processor.cpp b/src/graphics/vulkan/command_processor.cpp
+index 042a6f5..06db439 100644
+--- a/src/graphics/vulkan/command_processor.cpp
++++ b/src/graphics/vulkan/command_processor.cpp
+@@ -4423,8 +4423,7 @@ bool VulkanCommandProcessor::IssueCopy() {
+   }
+ 
+   ReadbackResolveMode readback_mode = GetReadbackResolveMode(REXCVAR_GET(vulkan_readback_resolve));
+-  render_target_cache_->SetResolveWritebackDeferralAllowed(readback_mode ==
+-                                                           ReadbackResolveMode::kDisabled);
++  render_target_cache_->SetResolveReadbackSizeLimit(GetReadbackResolveSizeLimit(readback_mode));
+   if (readback_mode == ReadbackResolveMode::kDisabled) {
+     uint32_t written_address, written_length;
+     return render_target_cache_->Resolve(*memory_, *shared_memory_, *texture_cache_,
+@@ -4454,7 +4453,8 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
+   }
+ 
+   ReadbackResolveMode readback_mode = GetReadbackResolveMode(REXCVAR_GET(vulkan_readback_resolve));
+-  if (readback_mode == ReadbackResolveMode::kDisabled) {
++  if (readback_mode == ReadbackResolveMode::kDisabled ||
++      written_length > GetReadbackResolveSizeLimit(readback_mode)) {
+     return true;
+   }
+ 
+diff --git a/src/graphics/vulkan/render_target_cache.cpp b/src/graphics/vulkan/render_target_cache.cpp
+index 5ab7fb0..ae8cc18 100644
+--- a/src/graphics/vulkan/render_target_cache.cpp
++++ b/src/graphics/vulkan/render_target_cache.cpp
+@@ -1194,8 +1194,9 @@ bool VulkanRenderTargetCache::Resolve(const memory::Memory& memory,
+             texture_copy, GetColorVulkanFormat(texture_copy_source->key().GetColorFormat()));
+       }
+       TextureCache::DeferredResolveTexture deferred_texture =
+-          texture_copy_count == 1 && CanDeferResolveWriteback(texture_copy, texture_cache,
+-                                                              texture_cache.resolve_copy_texture(0))
++          texture_copy_count == 1 &&
++                  CanDeferResolveWriteback(texture_copy, writes.extent_length, texture_cache,
++                                           texture_cache.resolve_copy_texture(0))
+               ? texture_cache.resolve_copy_texture(0)
+               : nullptr;
+ 

@@ -1,0 +1,50 @@
+diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
+index b35dd62..9532c0d 100644
+--- a/src/graphics/d3d12/command_processor.cpp
++++ b/src/graphics/d3d12/command_processor.cpp
+@@ -2907,8 +2907,7 @@ bool D3D12CommandProcessor::IssueCopy() {
+     return false;
+   }
+   ReadbackResolveMode readback_mode = GetReadbackResolveMode(REXCVAR_GET(d3d12_readback_resolve));
+-  render_target_cache_->SetResolveWritebackDeferralAllowed(readback_mode ==
+-                                                           ReadbackResolveMode::kDisabled);
++  render_target_cache_->SetResolveReadbackSizeLimit(GetReadbackResolveSizeLimit(readback_mode));
+   if (readback_mode == ReadbackResolveMode::kDisabled) {
+     uint32_t written_address, written_length;
+     return render_target_cache_->Resolve(*memory_, *shared_memory_, *texture_cache_,
+@@ -2932,6 +2931,11 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+     return true;
+   }
+ 
++  ReadbackResolveMode readback_mode = GetReadbackResolveMode(REXCVAR_GET(d3d12_readback_resolve));
++  if (written_length > GetReadbackResolveSizeLimit(readback_mode)) {
++    return true;
++  }
++
+   bool is_scaled = texture_cache_->IsDrawResolutionScaled();
+   uint64_t resolve_key = MakeReadbackResolveKey(written_address, written_length);
+   ReadbackBuffer& rb = readback_buffers_[resolve_key];
+@@ -3100,7 +3104,6 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+                                                written_address, written_length);
+   }
+ 
+-  ReadbackResolveMode readback_mode = GetReadbackResolveMode(REXCVAR_GET(d3d12_readback_resolve));
+   bool use_delayed_sync =
+       readback_mode == ReadbackResolveMode::kFast || readback_mode == ReadbackResolveMode::kSome;
+   uint32_t read_index = write_index;
+diff --git a/src/graphics/d3d12/render_target_cache.cpp b/src/graphics/d3d12/render_target_cache.cpp
+index 1519943..9507832 100644
+--- a/src/graphics/d3d12/render_target_cache.cpp
++++ b/src/graphics/d3d12/render_target_cache.cpp
+@@ -1301,8 +1301,9 @@ bool D3D12RenderTargetCache::Resolve(const memory::Memory& memory, D3D12SharedMe
+               ? texture_cache.PrepareResolveTextureCopies(texture_copy)
+               : 0;
+       TextureCache::DeferredResolveTexture deferred_texture =
+-          texture_copy_count == 1 && CanDeferResolveWriteback(texture_copy, texture_cache,
+-                                                              texture_cache.resolve_copy_texture(0))
++          texture_copy_count == 1 &&
++                  CanDeferResolveWriteback(texture_copy, writes.extent_length, texture_cache,
++                                           texture_cache.resolve_copy_texture(0))
+               ? texture_cache.resolve_copy_texture(0)
+               : nullptr;
+ 
