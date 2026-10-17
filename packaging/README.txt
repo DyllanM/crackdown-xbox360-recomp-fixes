@@ -7,14 +7,14 @@ your own copy of Crackdown for Xbox 360 (disc image or extracted files).
 First start
 -----------
 1. Run crackdown.exe. The launcher opens.
-2. Choose "Install game files" and pick your disc image (.iso) or the folder
-   with the extracted game. The files are checked and copied to the "game"
-   folder next to crackdown.exe.
+2. On the Play page choose "Install from disc image..." and pick your disc
+   image (.iso), or "Install from folder..." for the extracted disc files. The
+   files are checked and copied to the "game" folder next to crackdown.exe.
 3. Press Play.
 
 Hold Shift while starting to open the launcher again. The launcher saves your
-display, graphics and audio choices. A window size or monitor change restarts
-the game once so the new window is used.
+display, graphics and gameplay choices. A window size or monitor change
+restarts the game once so the new window is used.
 
 Where your data lives
 ---------------------
@@ -30,11 +30,18 @@ set aside as settings.toml.invalid and replaced automatically.
 Keys
 ----
   F11    toggle fullscreen / windowed
+  F2     show or hide the frame counter
 
 Needs
 -----
-Windows 10 or 11 (64-bit) and a GPU with Direct3D 12 support.
-On laptops with two GPUs the high-performance one is preferred.
+Windows 10 or 11 (64-bit), a GPU with Direct3D 12 support and the Microsoft
+Visual C++ 2015-2022 Redistributable (x64). On laptops with two GPUs the
+high-performance one is preferred.
+
+Known issue
+-----------
+Background music may occasionally stop during gameplay while sound effects and
+voices continue.
 
 Licenses
 --------

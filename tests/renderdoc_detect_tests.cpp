@@ -1,5 +1,4 @@
-// RenderDocAPI::CreateIfConnected must use RenderDoc only when the process already loaded it (see
-// docs/rexglue-runtime-patch.md, patch 0010). Linux only. The fake librenderdoc.so is in renderdoc/ next to this
+// RenderDocAPI::CreateIfConnected must use RenderDoc only when the process already loaded it (patch 0009). Linux only. The fake librenderdoc.so is in renderdoc/ next to this
 // executable, out of reach of the runtime's $ORIGIN RUNPATH, so it is absent until the re-executed child puts that
 // folder on LD_LIBRARY_PATH, where a plain dlopen would find it.
 // Run: crackdown_renderdoc_detect_tests   (exit code 0 = pass)

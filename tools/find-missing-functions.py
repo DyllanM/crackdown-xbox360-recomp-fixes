@@ -8,10 +8,9 @@ writes the HIGH-confidence ones to config/discovered-functions.toml.
   python tools/find-missing-functions.py --explain ADDR ...   detail one address
   python tools/find-missing-functions.py --selftest
 
-Needs a codegen run (generated/default) and game/extracted/default_image.bin.
-Method and evidence rules follow tools/find-missing-functions.py in
-hard-corps-uprising-recompiled. Section layout and paths are read from the image
-and the manifest, not assumed.
+Needs a codegen run (generated/default) and game/extracted/default_image.bin, which the
+crackdown_dump_image target writes: dump_image game/assets Default.xex game/extracted/default_image.bin.
+Section layout and paths are read from the image and the manifest, not assumed.
 """
 import bisect
 import hashlib

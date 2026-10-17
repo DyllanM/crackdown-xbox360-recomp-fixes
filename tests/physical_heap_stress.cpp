@@ -1,4 +1,4 @@
-// Stress test for the ReXGlue physical heap release order (see docs/rexglue-runtime-patch.md).
+// Stress test for the ReXGlue physical heap release order (patch 0003).
 // Several threads allocate and release physical memory at once; with the stock v0.10.0 order,
 // some releases fail because another thread's allocation lost its page-table entry.
 // Run: crackdown_physical_heap_stress   (exit code 0 = no failed release)

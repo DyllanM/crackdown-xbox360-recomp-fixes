@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Crackdown Recompiled
+Comment=Crackdown for Xbox 360, native PC port
+Exec=crackdown
+Icon=crackdown
+Categories=Game;
+Terminal=false
+StartupWMClass=io.github.saulob.crackdown

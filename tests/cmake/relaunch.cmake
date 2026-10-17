@@ -1,0 +1,1 @@
+crackdown_add_test(relaunch_tests SOURCES relaunch_tests.cpp)

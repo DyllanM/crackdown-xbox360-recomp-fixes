@@ -18,15 +18,12 @@
 
 #include "aspect_ratio.h"
 #include "cache_device.h"
-#include "debug_saulo_diagnostics.h"
-#include "debug_saulo_frame30.h"
 #include "frame_counter.h"
 #include "frame_rate.h"
 #include "game_files.h"
 #include "internal_render_scale.h"
 #include "launcher.h"
 #include "platform.h"
-#include "runtime_health.h"
 #include "settings.h"
 #include "skip_intro.h"
 #include "user_data.h"
@@ -64,15 +61,15 @@ class CrackdownApp : public rex::ReXApp {
     if (rex::ReXApp::SetupPresentation()) {
       return true;
     }
-    crackdown::ShowFatalMessage(
-        "The graphics system could not start. Crackdown needs a graphics driver with Direct3D 12 (Windows) or "
-        "Vulkan (Linux). Update the driver and start the game again. The log folder next to the program has the "
-        "details.");
+    REXLOG_WARN("Graphics unavailable; showing the graphics error");
+    crackdown::RunLauncherWithoutGraphics(DescribeGameFiles());
     return false;
   }
 
   void OnPostInitLogging() override {
-    StartRuntimeHealth();
+    if (crackdown::RecoverInterruptedInstall(game_data_root())) {
+      REXLOG_WARN("Restored the game files after an interrupted install");
+    }
     const crackdown::UserDataMessage message = crackdown::DescribeUserData(user_data_);
     if (message.warning) {
       REXLOG_WARN("{}", message.text);
@@ -169,18 +166,10 @@ class CrackdownApp : public rex::ReXApp {
     if (imgui_drawer()) {
       crackdown::CreateFrameCounter(imgui_drawer());
     }
-    InstallDebugSauloFaultProbe();
-    StartDebugSauloFrame30();
     InstallSkipIntro();
   }
 
   void OnFileDrop(rex::ui::FileDropEvent& e) override { crackdown::LauncherFileDropped(e.filename()); }
-
-  bool OnWindowCloseRequested() override {
-    StopRuntimeHealth();
-    return true;
-  }
-  void OnGuestThreadExit(rex::system::XThread*) override { StopRuntimeHealth(); }
 
   void OnShutdown() override {
     // ReXApp destroys the window before the runtime; the input drivers must detach while it still exists.
@@ -188,12 +177,22 @@ class CrackdownApp : public rex::ReXApp {
       input->Shutdown();
     }
     DetachWindowHost();
-    StopDebugSauloFrame30();
     crackdown::DetachFrameRate();
-    StopRuntimeHealth();
   }
 
  private:
+  crackdown::GraphicsFallbackInfo DescribeGameFiles() const {
+    const std::string folder = crackdown::Utf8(game_data_root());
+    switch (crackdown::CheckGameFiles(game_data_root()).state) {
+      case crackdown::GameFiles::kReady:
+        return {folder, "Ready", true};
+      case crackdown::GameFiles::kUnsupported:
+        return {folder, "Unsupported version", false};
+      default:
+        return {folder, "Setup required", false};
+    }
+  }
+
   // F11 changes the window at once and keeps the choice as the player's Display mode for the next start.
   void ToggleWindowMode() {
     const bool fullscreen = !window()->IsFullscreen();

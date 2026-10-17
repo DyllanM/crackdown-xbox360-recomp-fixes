@@ -18,9 +18,6 @@ namespace {
 
 constexpr uint32_t kGuestLowAddress = 0x10000;
 constexpr uint32_t kGuestHighAddress = 0xFFFF0000;
-constexpr uint32_t kMovieCallLogLimit = 4;
-constexpr uint32_t kXuiSkipLogLimit = 8;
-constexpr uint32_t kSplashSkipLogLimit = 8;
 constexpr uint32_t kMovieNameLimit = 128;
 // Singleton byte read by sub_82624A30: zero selects the disabled-video branch, which finishes the video at once.
 constexpr uint32_t kVideosEnabledOffset = 152;
@@ -32,10 +29,6 @@ constexpr uint32_t kSplashLastState = 8;
 // Global byte at 17674 set while the startup presentation runs; the frontend start branch requires it to be zero.
 constexpr uint32_t kPresentationFlagAddress = 0x82DE450A;
 
-std::atomic<uint32_t> g_movie_calls{0};
-std::atomic<uint32_t> g_xui_skips{0};
-std::atomic<uint32_t> g_splash_skips{0};
-std::atomic<bool> g_active_logged{false};
 std::atomic<bool> g_start_reached{false};
 
 bool IsGuestAddress(uint32_t addr) {
@@ -87,17 +80,12 @@ bool IsPreTitleMovie(uint8_t* base, uint32_t name_object) {
 }  // namespace
 
 void InstallSkipIntro() {
-  REXLOG_INFO("[SkipIntro] requested={}", REXCVAR_GET(crackdown_skip_intro) ? 1 : 0);
+  REXLOG_INFO("Skip intro: {}", REXCVAR_GET(crackdown_skip_intro) ? "on" : "off");
 }
 
 REX_EXTERN(__imp__sub_826A8940);
 REX_HOOK_RAW(sub_826A8940) {
-  const bool skip = REXCVAR_GET(crackdown_skip_intro) && ctx.r3.u32 <= 1;
-  if (g_movie_calls.fetch_add(1) < kMovieCallLogLimit) {
-    REXLOG_INFO("[SkipIntro] engine_movie index={} skipped={}", ctx.r3.u32, skip ? 1 : 0);
-  }
-  if (skip) {
-    if (!g_active_logged.exchange(true)) REXLOG_INFO("[SkipIntro] active");
+  if (REXCVAR_GET(crackdown_skip_intro) && ctx.r3.u32 <= 1) {
     return;
   }
   __imp__sub_826A8940(ctx, base);
@@ -110,10 +98,6 @@ REX_HOOK_RAW(sub_82624A30) {
     __imp__sub_82624A30(ctx, base);
     return;
   }
-  if (g_xui_skips.fetch_add(1) < kXuiSkipLogLimit) {
-    REXLOG_INFO("[SkipIntro] xui_skip scene={}", MovieNameLower(base, ctx.r4.u32));
-  }
-
   const uint64_t r3 = ctx.r3.u64, r4 = ctx.r4.u64, r5 = ctx.r5.u64, r6 = ctx.r6.u64, r7 = ctx.r7.u64;
   const uint64_t lr = ctx.lr;
   __imp__sub_8232EA18(ctx, base);
@@ -146,15 +130,11 @@ REX_HOOK_RAW(sub_82653FC0) {
   const uint32_t state = ReadBE32(base, frame_object + kFrameObjectStateOffset);
   if (state == kSequenceStateStartPrompt && ReadByte(base, kPresentationFlagAddress) == 0) {
     g_start_reached.store(true);
-    REXLOG_INFO("[SkipIntro] start_prompt_reached");
   }
   const bool done = ReadByte(base, frame_object + 24) != 0;
   if (done || state < kSplashFirstState || state > kSplashLastState) {
     __imp__sub_82653FC0(ctx, base);
     return;
-  }
-  if (g_splash_skips.fetch_add(1) < kSplashSkipLogLimit) {
-    REXLOG_INFO("[SkipIntro] splash_skip id=sequence_state_{}", state);
   }
   ctx.r3.u64 = frame_object - kFrameObjectStateOffset;
   __imp__sub_826544E0(ctx, base);

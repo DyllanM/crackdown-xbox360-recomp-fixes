@@ -1,4 +1,4 @@
-# Pure-logic tests: no game files, no ReXGlue runtime. tools/test.ps1 configures and runs this project.
+# Pure-logic tests: no game files, no ReXGlue runtime. tools/test.ps1 and tools/test.sh configure and run this project.
 
 cmake_minimum_required(VERSION 3.25)
 project(crackdown_tests LANGUAGES CXX)
@@ -6,7 +6,12 @@ project(crackdown_tests LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CRACKDOWN_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tools/rexglue/win-amd64" CACHE PATH "Unpacked ReXGlue SDK")
+if(WIN32)
+    set(_crackdown_sdk_platform win-amd64)
+else()
+    set(_crackdown_sdk_platform linux-amd64)
+endif()
+set(CRACKDOWN_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tools/rexglue/${_crackdown_sdk_platform}" CACHE PATH "Unpacked ReXGlue SDK")
 set(CRACKDOWN_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
 enable_testing()

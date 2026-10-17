@@ -59,6 +59,4 @@ inline void SanitizeBigEndianPcm(uint8_t* bytes, size_t sample_count, PcmFirewal
   if (counts.Replaced() != replaced_before) ++counts.sanitized_frames;
 }
 
-PcmFirewallCounts AudioPcmFirewallCounts();
-
 }  // namespace crackdown

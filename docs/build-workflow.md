@@ -40,7 +40,9 @@ and Visual Studio's Clang, LLD, CMake, Ninja and x64 SDK environment.
 
     .\tools\test.ps1                         # pure-logic tests (user data, settings file, window placement, installer, ...)
     .\tools\build.ps1 -Target <names>        # runtime-linked tests (allocator stress, title-thread shutdown, RenderDoc detect)
+    .\tools\test-release-check.ps1           # the release scanner accepts a clean folder and refuses player data and game files
     .\tools\package-release.ps1              # local Release build and dist\Crackdown-v<version>-windows-x64.zip
+    .\tools\stamp-release-hashes.ps1         # writes the artifacts' SHA-256 into the release notes
 
 `package-release.ps1` builds into `build-release\`, stages only the allow-listed files and refuses to continue if
 the staging folder holds game files, saves, logs, settings or local paths. Nothing is published or uploaded.
@@ -51,5 +53,17 @@ license file; get one from its author before distributing a package.
 Patches with a `.windows` or `.linux` suffix apply only on that platform; unsuffixed patches apply everywhere.
 See `docs/rexglue-patches.md` for what each patch is for.
 
-Linux: only the Linux-suffixed patches and a clean-apply check exist. There are no Linux build or AppImage scripts
-yet, and nothing has been built or run on Linux.
+## Linux
+
+Codegen only runs on Windows. The Linux scripts use the `generated\default` it wrote, and
+`tools/check-guest-code.sh` stops them when `generated/codegen-inputs.stamp` no longer matches the manifest, the XEX,
+the includes and the codegen patches.
+
+    tools/build.sh [release|relwithdebinfo|debug]   # build into out/build/linux-amd64-<config>
+    tools/test.sh                                    # tests that need no game files
+    tools/package-linux.sh [--clean] [--out-dir DIR] # Release build and AppImage in dist/
+    tools/build-patched-rexruntime.sh --check tools/rexglue/linux-amd64 --config Release   # report the installed runtime
+
+`tools/build-patched-rexruntime.sh` is the Linux counterpart of `tools\build-patched-rexruntime.ps1`: the same pinned
+source and patches, the Linux patch set, and a stamp checked before every build and after staging. The CMake build runs
+the same check. See `docs/linux.md` for the build environment and the AppImage.

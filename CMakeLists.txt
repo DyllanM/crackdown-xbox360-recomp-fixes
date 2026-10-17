@@ -64,15 +64,12 @@ set(CRACKDOWN_SOURCES
     src/graphics_adapters.cpp
     src/launcher.cpp
     src/platform.cpp
-    src/runtime_health.cpp
     src/settings.cpp
     src/settings_file.cpp
     src/title_compat.cpp
     src/user_data.cpp
     src/window_host.cpp
     src/xdvdfs.cpp
-    src/debug_saulo_diagnostics.cpp
-    src/debug_saulo_frame30.cpp
     src/skip_intro.cpp
 )
 

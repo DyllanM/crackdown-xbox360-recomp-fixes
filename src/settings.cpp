@@ -344,7 +344,6 @@ void GameSettings::ApplyDisplayMode() const {
   rex::cvar::SetFlagByName(kFullscreenKey, pending->second);
 }
 
-// Also replaces a native_2x_msaa = false written by an earlier launcher that labelled it Off.
 void ApplyMultisampling() {
   rex::cvar::SetFlagByName("native_2x_msaa",
                            Native2xMsaaFor(REXCVAR_GET(crackdown_msaa_compatibility)) ? "true" : "false");

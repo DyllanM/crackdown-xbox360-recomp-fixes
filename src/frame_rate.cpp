@@ -14,7 +14,6 @@
 #include <rex/ui/window.h>
 #include <rex/ui/windowed_app_context.h>
 
-#include "debug_saulo_frame30.h"
 #include "platform.h"
 #include "settings.h"
 #include "window_title.h"
@@ -127,7 +126,6 @@ GuestFrameStats GetGuestFrameStats() {
 
 // Named like the SDK's export, so REX_EXTERN would call this hook again: the original is called by its entry point.
 REX_HOOK_RAW(__imp__VdSwap) {
-  DebugSauloFrame30OnVdSwap();
   rex::ppc::HostToGuestFunction<rex::kernel::xboxkrnl::VdSwap_entry>(ctx, base);
   crackdown::CountGuestFrame();
 }

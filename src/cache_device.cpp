@@ -13,7 +13,6 @@ namespace {
 constexpr std::string_view kCacheMountPath = "\\Device\\cache0";
 constexpr std::string_view kTitleFolder = "4D5307DC";
 constexpr std::string_view kForbiddenNameChars = ":*?\"<>|";
-constexpr size_t kMaxDiagnosticPaths = 64;
 
 bool IsReservedDeviceName(std::string_view part) {
   std::string stem(part.substr(0, part.find('.')));
@@ -69,20 +68,7 @@ CrackdownCacheDevice::CrackdownCacheDevice(const std::filesystem::path& host_pat
     : HostPathDevice(kCacheMountPath, host_path, /*read_only=*/false, /*allow_share_delete=*/true) {}
 
 rex::filesystem::Entry* CrackdownCacheDevice::ResolvePath(const std::string_view path) {
-  if (!IsSafeCachePath(path)) {
-    if (rejected_paths_.size() < kMaxDiagnosticPaths &&
-        rejected_paths_.insert(std::string(path)).second) {
-      REXLOG_WARN("[DEBUG_SAULO][Cache] rejected unsafe path '{}'", path);
-    }
-    return nullptr;
-  }
-
-  auto* entry = HostPathDevice::ResolvePath(path);
-  if (!entry && missing_paths_.size() < kMaxDiagnosticPaths &&
-      missing_paths_.insert(std::string(path)).second) {
-    REXLOG_INFO("[DEBUG_SAULO][Cache] not found '{}'", path);
-  }
-  return entry;
+  return IsSafeCachePath(path) ? HostPathDevice::ResolvePath(path) : nullptr;
 }
 
 bool MountCacheDevice(rex::filesystem::VirtualFileSystem* file_system,
@@ -101,6 +87,6 @@ bool MountCacheDevice(rex::filesystem::VirtualFileSystem* file_system,
     return false;
   }
 
-  REXLOG_INFO("[DEBUG_SAULO][Cache] mounted {} at {}", kCacheMountPath, host_path.string());
+  REXLOG_INFO("Cache device: mounted {} at {}", kCacheMountPath, host_path.string());
   return true;
 }

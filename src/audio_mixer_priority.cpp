@@ -43,7 +43,7 @@ REX_HOOK_RAW(sub_82A4BEF8) {
     if (RaiseNativeAudioPriority()) {
       REXLOG_INFO("native_audio_mixer_priority: raised the audio mixer thread priority");
     } else {
-      REXLOG_WARN("native_audio_mixer_priority: native audio scheduling unavailable");
+      REXLOG_INFO("native_audio_mixer_priority: native audio scheduling unavailable");
     }
   }
   __imp__sub_82A4BEF8(ctx, base);

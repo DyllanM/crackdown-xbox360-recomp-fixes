@@ -23,7 +23,6 @@
 #include <rex/logging.h>
 #include <rex/ppc.h>
 
-#include "debug_saulo_frame30.h"
 #include "frame_pacing.h"
 #include "frame_timing.h"
 #include "settings.h"
@@ -186,7 +185,6 @@ void LogFrameRate(int rate) {
 REX_HOOK_RAW(sub_826A7698) {
   const int rate = FrameRate();
   LogFrameRate(rate);
-  DebugSauloFrame30SetTargetFps(rate);
   if (HighFrameRate(rate)) {
     BeginFrame(rate);
     SelectVariableStep(base, rate);
@@ -211,7 +209,6 @@ REX_HOOK_RAW(sub_8254C568) {
   } else {
     __imp__sub_8254C568(ctx, base);
   }
-  DebugSauloFrame30OnDelta(float(ctx.f1.f64));
 }
 
 REX_HOOK_RAW(sub_82324938) {
@@ -249,7 +246,6 @@ REX_HOOK_RAW(sub_826BC3D0) {
   } else if (HighFrameRate(rate)) {
     ctx.r3.u64 = (ctx.r3.u32 & ~kSwapImmediateThresholdMask) | kSwapImmediateAlways;
   }
-  DebugSauloFrame30OnSwapSchedule(ctx.r3.u32);
   __imp__sub_826BC3D0(ctx, base);
 }
 

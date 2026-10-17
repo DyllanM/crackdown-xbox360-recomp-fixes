@@ -7,3 +7,6 @@ patches/rexglue-sdk/* text eol=lf
 # Linux scripts and files run on Linux whatever the checkout's line endings.
 *.sh text eol=lf
 packaging/linux/* text eol=lf
+
+# The AppImage runtime patch and pins are applied and hashed on Linux.
+patches/appimage-runtime/* text eol=lf

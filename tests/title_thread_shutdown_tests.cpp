@@ -134,6 +134,7 @@ REX_FUNC(Runaway) {
 // Exit Game: XamLoaderLaunchTitle terminates the title on the main thread. The poller has just fallen asleep, so
 // its sleep outlasts the termination.
 REX_FUNC(Main) {
+  static_cast<void>(base);
   while (!title.poller_asleep.load()) {
     Delay(kShortSleep);
   }

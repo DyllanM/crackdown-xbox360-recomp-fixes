@@ -32,7 +32,7 @@ diff --git a/src/audio/audio_system.cpp b/src/audio/audio_system.cpp
    // Main run loop.
    uint32_t diag_pump_count = 0;
    while (worker_running_) {
-@@ -141,6 +154,17 @@ void AudioSystem::WorkerThreadMain() {
+@@ -141,5 +154,16 @@ void AudioSystem::WorkerThreadMain() {
        global_lock.unlock();
  
        if (client_callback) {
@@ -47,6 +47,5 @@ diff --git a/src/audio/audio_system.cpp b/src/audio/audio_system.cpp
 +          // from now instead of catching up in a burst.
 +          next_callback[index] = std::max(next_callback[index] + kCallbackInterval, now + kCallbackInterval / 2);
 +        }
-         ObserveRuntime("AUDIO", "pump_begin", index, client_callback, client_callback_arg);
          if (diag_pump_count < 10) {
            REXAPU_DEBUG("AudioWorker: dispatching callback {:08X} with arg {:08X} for client {}",

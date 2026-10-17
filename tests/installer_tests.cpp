@@ -553,11 +553,20 @@ bool NoLeftovers(const Site& site) {
   return !fs::exists(site.staging) && !fs::exists(site.backup);
 }
 
-bool InstalledFromTree(const fs::path& game) {
-  return ReadFile(game / "AUDIO" / "a.bin") == Pattern(3000, 2) &&
-         ReadFile(game / "AUDIO" / "Deep" / "b.bin") == Pattern(10, 3) &&
-         ReadFile(game / "Local" / "en-US" / "Strings.str") == Pattern(5000, 4) &&
-         ReadFile(game / "Big" / "big.bin") == Pattern(kBigSize, 5) && fs::file_size(game / "empty.txt") == 0;
+// The installed files keep the casing of their source, so a folder source with lower-case names needs lower-case paths
+// on a case-sensitive file system.
+bool InstalledFromTree(const fs::path& game, bool lower_case = false) {
+  auto at = [&](std::initializer_list<const char*> parts) {
+    fs::path path = game;
+    for (const char* part : parts) {
+      path /= lower_case ? Lower(part) : std::string(part);
+    }
+    return path;
+  };
+  return ReadFile(at({"AUDIO", "a.bin"})) == Pattern(3000, 2) &&
+         ReadFile(at({"AUDIO", "Deep", "b.bin"})) == Pattern(10, 3) &&
+         ReadFile(at({"Local", "en-US", "Strings.str"})) == Pattern(5000, 4) &&
+         ReadFile(at({"Big", "big.bin"})) == Pattern(kBigSize, 5) && fs::file_size(at({"empty.txt"})) == 0;
 }
 
 struct Recorder {
@@ -1103,7 +1112,7 @@ void TestInstallFromFolder() {
     }
     CHECK(Listing(site.game) == expected);
     CHECK(!fs::exists(site.game / (lower_case ? "$systemupdate" : "$SystemUpdate")));
-    CHECK(InstalledFromTree(site.game));
+    CHECK(InstalledFromTree(site.game, lower_case));
     CHECK(NoLeftovers(site));
     CHECK(!recorder.calls.empty() && recorder.calls.back().done_bytes == TotalBytes(site.descriptor));
   }

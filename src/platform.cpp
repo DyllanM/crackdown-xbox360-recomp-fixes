@@ -26,6 +26,8 @@
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 
+#include "relaunch_command.h"
+
 #if defined(_WIN32)
 // The NVIDIA Optimus and AMD switchable graphics drivers run programs exporting these on the discrete GPU.
 extern "C" {
@@ -36,6 +38,17 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
 namespace crackdown {
 namespace {
+
+#if defined(_WIN32)
+constexpr char kGraphicsUnavailableText[] =
+    "The graphics system could not start. Crackdown needs a graphics driver with Direct3D 12. Update the driver and "
+    "start the game again. The log folder next to the program has the details.";
+#else
+constexpr char kGraphicsUnavailableText[] =
+    "The graphics system could not start. Crackdown needs a working Vulkan graphics driver, such as Mesa (AMD and "
+    "Intel) or the NVIDIA driver. Install or update it and start the game again. The log folder next to the "
+    "AppImage has the details.";
+#endif
 
 #if defined(_WIN32)
 
@@ -361,6 +374,10 @@ void ShowFatalMessage(const std::string& text) {
   MessageBoxA(nullptr, text.c_str(), kWindowTitle, MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
 }
 
+void RunLauncherWithoutGraphics(const GraphicsFallbackInfo&) {
+  ShowFatalMessage(kGraphicsUnavailableText);
+}
+
 std::vector<Rect> WorkAreas() {
   std::vector<Rect> areas;
   EnumDisplayMonitors(nullptr, nullptr, AddWorkArea, reinterpret_cast<LPARAM>(&areas));
@@ -526,12 +543,22 @@ class SoftwareText {
     atlas_.GetTexDataAsAlpha8(&pixels_, &width_, &height_);
   }
 
-  void Draw(SDL_Surface* surface, std::string_view text, int x, int y, Color color) const {
+  int Width(std::string_view text, int scale) const {
+    float width = 0.0f;
+    for (const char c : text) {
+      width += baked_->FindGlyph(Printable(c))->AdvanceX;
+    }
+    return int(width) * scale;
+  }
+
+  int Height(int scale) const { return int(baked_->Size) * scale; }
+
+  void Draw(SDL_Surface* surface, std::string_view text, int x, int y, int scale, Color color) const {
     float pen_x = float(x);
     for (const char c : text) {
       const ImFontGlyph* glyph = baked_->FindGlyph(Printable(c));
-      DrawGlyph(surface, *glyph, int(pen_x), y, color);
-      pen_x += glyph->AdvanceX;
+      DrawGlyph(surface, *glyph, int(pen_x), y, scale, color);
+      pen_x += glyph->AdvanceX * float(scale);
     }
   }
 
@@ -544,7 +571,7 @@ class SoftwareText {
     return code >= kFirstGlyph && code <= kLastGlyph ? ImWchar(code) : ImWchar('?');
   }
 
-  void DrawGlyph(SDL_Surface* surface, const ImFontGlyph& glyph, int x, int y, Color color) const {
+  void DrawGlyph(SDL_Surface* surface, const ImFontGlyph& glyph, int x, int y, int scale, Color color) const {
     if (!glyph.Visible) {
       return;
     }
@@ -552,11 +579,18 @@ class SoftwareText {
     const int source_y = int(glyph.V0 * float(height_) + 0.5f);
     const int width = int(glyph.X1 - glyph.X0 + 0.5f);
     const int height = int(glyph.Y1 - glyph.Y0 + 0.5f);
+    const int left = x + int(glyph.X0 * float(scale) + 0.5f);
+    const int top = y + int(glyph.Y0 * float(scale) + 0.5f);
     for (int row = 0; row < height; ++row) {
       for (int column = 0; column < width; ++column) {
         const int alpha = pixels_[(source_y + row) * width_ + source_x + column];
-        if (alpha != 0) {
-          Blend(surface, x + int(glyph.X0 + 0.5f) + column, y + int(glyph.Y0 + 0.5f) + row, color, alpha);
+        if (alpha == 0) {
+          continue;
+        }
+        for (int dy = 0; dy < scale; ++dy) {
+          for (int dx = 0; dx < scale; ++dx) {
+            Blend(surface, left + column * scale + dx, top + row * scale + dy, color, alpha);
+          }
         }
       }
     }
@@ -578,6 +612,10 @@ class SoftwareText {
   int width_ = 0;
   int height_ = 0;
 };
+
+void FillRect(SDL_Surface* surface, const SDL_Rect& rect, Color color) {
+  SDL_FillSurfaceRect(surface, &rect, SDL_MapSurfaceRGB(surface, Uint8(color.r), Uint8(color.g), Uint8(color.b)));
+}
 
 std::vector<std::string> WrapLines(const std::string& text) {
   std::vector<std::string> lines;
@@ -602,13 +640,102 @@ void DrawMessage(SDL_Window* window, const SoftwareText& text, const std::vector
   if (!surface) {
     return;
   }
-  SDL_Rect all{0, 0, surface->w, surface->h};
-  SDL_FillSurfaceRect(surface, &all, SDL_MapSurfaceRGB(surface, Uint8(kPanel.r), Uint8(kPanel.g), Uint8(kPanel.b)));
+  FillRect(surface, {0, 0, surface->w, surface->h}, kPanel);
   int y = kMessageMargin;
   for (const std::string& line : lines) {
-    text.Draw(surface, line, kMessageMargin, y, kText);
+    text.Draw(surface, line, kMessageMargin, y, 1, kText);
     y += kMessageLineStep;
   }
+  SDL_UpdateWindowSurface(window);
+}
+
+constexpr int kFallbackWidth = 640;
+constexpr int kFallbackHeight = 400;
+constexpr int kFallbackMargin = 24;
+constexpr int kFallbackHeaderHeight = 96;
+constexpr int kFallbackIconSize = 72;
+constexpr int kFallbackLargeScale = 2;
+constexpr int kFallbackRowStep = 34;
+constexpr int kFallbackLabelWidth = 120;
+constexpr Color kFallbackBackground{0x12, 0x16, 0x1e};
+constexpr Color kFallbackHeader{0x0e, 0x1a, 0x2c};
+constexpr Color kAccent{0x40, 0xa6, 0xf2};
+constexpr Color kAccentHover{0x70, 0xbe, 0xf6};
+constexpr Color kButton{0x2c, 0x34, 0x44};
+constexpr Color kButtonHover{0x3c, 0x48, 0x5c};
+constexpr Color kDimText{0x9a, 0xa4, 0xb4};
+constexpr Color kReadyText{0x5c, 0xc9, 0x6b};
+constexpr Color kWarningText{0xf2, 0xb1, 0x3a};
+constexpr Color kDarkText{0x0c, 0x12, 0x1c};
+
+enum class FallbackButton { kNone, kPlay, kQuit };
+
+constexpr SDL_Rect kPlayButton{kFallbackMargin, kFallbackHeight - 76, 200, 48};
+constexpr SDL_Rect kQuitButton{kFallbackMargin + 216, kFallbackHeight - 76, 140, 48};
+
+FallbackButton ButtonAt(float x, float y) {
+  const SDL_Point point{int(x), int(y)};
+  if (SDL_PointInRect(&point, &kPlayButton)) {
+    return FallbackButton::kPlay;
+  }
+  return SDL_PointInRect(&point, &kQuitButton) ? FallbackButton::kQuit : FallbackButton::kNone;
+}
+
+std::string FitToWidth(const SoftwareText& text, std::string value, int max_width) {
+  if (text.Width(value, 1) <= max_width) {
+    return value;
+  }
+  while (value.size() > 1 && text.Width("..." + value, 1) > max_width) {
+    value.erase(0, 1);
+  }
+  return "..." + value;
+}
+
+void DrawButton(SDL_Surface* surface, const SoftwareText& text, const SDL_Rect& rect, const char* label, bool primary,
+                bool hovered) {
+  const Color fill = primary ? (hovered ? kAccentHover : kAccent) : (hovered ? kButtonHover : kButton);
+  FillRect(surface, rect, fill);
+  const int width = text.Width(label, kFallbackLargeScale);
+  text.Draw(surface, label, rect.x + (rect.w - width) / 2, rect.y + (rect.h - text.Height(kFallbackLargeScale)) / 2,
+            kFallbackLargeScale, primary ? kDarkText : kText);
+}
+
+void DrawStatusRow(SDL_Surface* surface, const SoftwareText& text, int y, const char* label, const std::string& value,
+                   Color value_color) {
+  text.Draw(surface, label, kFallbackMargin, y, 1, kDimText);
+  text.Draw(surface, value, kFallbackMargin + kFallbackLabelWidth, y, 1, value_color);
+}
+
+void DrawLauncherWithoutGraphics(SDL_Window* window, const SoftwareText& text, SDL_Surface* icon,
+                                 const GraphicsFallbackInfo& info, FallbackButton hovered) {
+  SDL_Surface* surface = SDL_GetWindowSurface(window);
+  if (!surface) {
+    return;
+  }
+  FillRect(surface, {0, 0, surface->w, surface->h}, kFallbackBackground);
+  FillRect(surface, {0, 0, surface->w, kFallbackHeaderHeight}, kFallbackHeader);
+  FillRect(surface, {0, kFallbackHeaderHeight, surface->w, 3}, kAccent);
+  int title_x = kFallbackMargin;
+  if (icon) {
+    SDL_Rect target{kFallbackMargin, (kFallbackHeaderHeight - kFallbackIconSize) / 2, kFallbackIconSize,
+                    kFallbackIconSize};
+    SDL_BlitSurfaceScaled(icon, nullptr, surface, &target, SDL_SCALEMODE_LINEAR);
+    title_x += kFallbackIconSize + kFallbackMargin;
+  }
+  text.Draw(surface, "CRACKDOWN", title_x, 24, kFallbackLargeScale, kText);
+  text.Draw(surface, "RECOMPILED", title_x, 32 + text.Height(kFallbackLargeScale), kFallbackLargeScale, kAccent);
+
+  const int max_value_width = surface->w - 2 * kFallbackMargin - kFallbackLabelWidth;
+  int row_y = kFallbackHeaderHeight + 32;
+  DrawStatusRow(surface, text, row_y, "Game files", info.game_files_status,
+                info.game_files_ready ? kReadyText : kWarningText);
+  row_y += kFallbackRowStep;
+  DrawStatusRow(surface, text, row_y, "Folder", FitToWidth(text, info.game_dir, max_value_width), kDimText);
+  row_y += kFallbackRowStep;
+  DrawStatusRow(surface, text, row_y, "Graphics", "Vulkan setup required", kWarningText);
+
+  DrawButton(surface, text, kPlayButton, "PLAY", true, hovered == FallbackButton::kPlay);
+  DrawButton(surface, text, kQuitButton, "QUIT", false, hovered == FallbackButton::kQuit);
   SDL_UpdateWindowSurface(window);
 }
 
@@ -646,6 +773,65 @@ void ShowFatalMessage(const std::string& message) {
         break;
     }
   }
+  SDL_DestroyWindow(window);
+}
+
+void RunLauncherWithoutGraphics(const GraphicsFallbackInfo& info) {
+  const SoftwareText text;
+  SDL_Window* window = SDL_CreateWindow(kWindowTitle, kFallbackWidth, kFallbackHeight, 0);
+  if (!window || !SDL_GetWindowSurface(window)) {
+    REXLOG_ERROR("Could not open the launcher window without graphics: {}", SDL_GetError());
+    SDL_DestroyWindow(window);
+    ShowFatalMessage(kGraphicsUnavailableText);
+    return;
+  }
+  SDL_Surface* icon = SDL_LoadPNG(Utf8(IconFile()).c_str());
+  if (icon) {
+    SDL_SetWindowIcon(window, icon);
+  }
+  FallbackButton hovered = FallbackButton::kNone;
+  DrawLauncherWithoutGraphics(window, text, icon, info, hovered);
+  for (bool open = true; open;) {
+    SDL_Event event;
+    if (!SDL_WaitEvent(&event)) {
+      break;
+    }
+    FallbackButton pressed = FallbackButton::kNone;
+    switch (event.type) {
+      case SDL_EVENT_QUIT:
+      case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+        open = false;
+        break;
+      case SDL_EVENT_KEY_DOWN:
+        if (event.key.key == SDLK_ESCAPE) {
+          open = false;
+        } else if (event.key.key == SDLK_RETURN || event.key.key == SDLK_KP_ENTER) {
+          pressed = FallbackButton::kPlay;
+        }
+        break;
+      case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        pressed = ButtonAt(event.button.x, event.button.y);
+        break;
+      case SDL_EVENT_MOUSE_MOTION:
+        if (const FallbackButton over = ButtonAt(event.motion.x, event.motion.y); over != hovered) {
+          hovered = over;
+          DrawLauncherWithoutGraphics(window, text, icon, info, hovered);
+        }
+        break;
+      case SDL_EVENT_WINDOW_EXPOSED:
+        DrawLauncherWithoutGraphics(window, text, icon, info, hovered);
+        break;
+      default:
+        break;
+    }
+    if (pressed == FallbackButton::kQuit) {
+      open = false;
+    } else if (pressed == FallbackButton::kPlay) {
+      ShowFatalMessage(kGraphicsUnavailableText);
+      DrawLauncherWithoutGraphics(window, text, icon, info, hovered);
+    }
+  }
+  SDL_DestroySurface(icon);
   SDL_DestroyWindow(window);
 }
 
@@ -726,24 +912,21 @@ bool RelaunchSelf(std::wstring_view extra_args) {
   for (const wchar_t c : extra_args) {
     extra += char(c);  // ASCII flags
   }
-  args.push_back(extra);
-  // Inside an AppImage, start the AppImage again: this process's mount closes when it exits.
   std::error_code ec;
-  const char* appimage = std::getenv("APPIMAGE");
-  const std::string exe =
-      appimage && *appimage ? std::string(appimage) : std::filesystem::read_symlink("/proc/self/exe", ec).string();
-  if (exe.empty() || args.size() < 2) {
+  const std::string self = std::filesystem::read_symlink("/proc/self/exe", ec).string();
+  std::optional<RelaunchCommand> command = MakeRelaunchCommand(std::move(args), std::getenv("APPIMAGE"), self, extra);
+  if (!command) {
     REXLOG_ERROR("Relaunch failed: cannot read this process's command line");
     return false;
   }
-  args.front() = exe;
   std::vector<char*> argv;
-  for (std::string& arg : args) {
+  for (std::string& arg : command->argv) {
     argv.push_back(arg.data());
   }
   argv.push_back(nullptr);
   pid_t pid = 0;
-  if (const int error = posix_spawn(&pid, exe.c_str(), nullptr, nullptr, argv.data(), environ); error != 0) {
+  if (const int error = posix_spawn(&pid, command->executable.c_str(), nullptr, nullptr, argv.data(), environ);
+      error != 0) {
     REXLOG_ERROR("Relaunch failed ({})", error);
     return false;
   }

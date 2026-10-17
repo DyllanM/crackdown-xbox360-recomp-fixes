@@ -1,0 +1,89 @@
+diff --git a/include/rex/graphics/vulkan/command_processor.h b/include/rex/graphics/vulkan/command_processor.h
+index c0d5e59..be64940 100644
+--- a/include/rex/graphics/vulkan/command_processor.h
++++ b/include/rex/graphics/vulkan/command_processor.h
+@@ -438,7 +438,7 @@ class VulkanCommandProcessor : public CommandProcessor {
+   void DestroyScratchBuffer();
+   bool InitializeOcclusionQueryResources();
+   void ShutdownOcclusionQueryResources();
+-  bool BeginGuestOcclusionQuery(uint32_t sample_count_address);
++  bool BeginGuestOcclusionQuery();
+   bool EndGuestOcclusionQuery(uint32_t sample_count_address);
+   // Writes the results of the ended queries whose submissions have completed to the guest, and,
+   // if wait is true, awaits the rest.
+@@ -744,7 +744,6 @@ class VulkanCommandProcessor : public CommandProcessor {
+   uint32_t occlusion_query_cursor_ = 0;
+   bool occlusion_query_resources_available_ = false;
+   struct ActiveOcclusionQuery {
+-    uint32_t sample_count_address = 0;
+     uint32_t host_index = UINT32_MAX;
+     bool valid = false;
+   } active_occlusion_query_;
+diff --git a/src/graphics/vulkan/command_processor.cpp b/src/graphics/vulkan/command_processor.cpp
+index 87b6e7d..042a6f5 100644
+--- a/src/graphics/vulkan/command_processor.cpp
++++ b/src/graphics/vulkan/command_processor.cpp
+@@ -688,24 +688,17 @@ bool VulkanCommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(memory::RingBuff
+       sample_counts->ZFail_A == kQueryFinished || sample_counts->ZFail_B == kQueryFinished;
+   bool is_end = is_end_via_z_pass || is_end_via_z_fail;
+ 
++  // Direct3D 9 snapshots the counters into separate begin and end blocks and subtracts them, so
++  // the begin block reads as zero and the end block keeps its markers (query not ready) until the
++  // host result is written once its submission completes.
+   if (!is_end) {
+-    if (active_occlusion_query_.valid &&
+-        active_occlusion_query_.sample_count_address != sample_count_addr) {
+-      DisableHostOcclusionQueries();
+-      return write_fallback_result();
+-    }
+-    if (!BeginGuestOcclusionQuery(sample_count_addr)) {
++    std::memset(sample_counts, 0, sizeof(xenos::xe_gpu_depth_sample_counts));
++    if (!BeginGuestOcclusionQuery()) {
+       return write_fallback_result();
+     }
+     return true;
+   }
+ 
+-  if (!active_occlusion_query_.valid ||
+-      active_occlusion_query_.sample_count_address != sample_count_addr) {
+-    DisableHostOcclusionQueries();
+-    return write_fallback_result();
+-  }
+-
+   if (!EndGuestOcclusionQuery(sample_count_addr)) {
+     return write_fallback_result();
+   }
+@@ -4873,16 +4866,20 @@ void VulkanCommandProcessor::DisableHostOcclusionQueries() {
+   occlusion_query_resources_available_ = false;
+ }
+ 
+-bool VulkanCommandProcessor::BeginGuestOcclusionQuery(uint32_t sample_count_address) {
++bool VulkanCommandProcessor::BeginGuestOcclusionQuery() {
+   if (!REXCVAR_GET(occlusion_query_enable) || !occlusion_query_resources_available_ ||
+       occlusion_query_pool_ == VK_NULL_HANDLE || occlusion_query_readback_mapping_ == nullptr) {
+     return false;
+   }
+   if (active_occlusion_query_.valid) {
+-    REXGPU_WARN(
+-        "VulkanCommandProcessor: Occlusion query begin issued while another query is active");
+-    DisableHostOcclusionQueries();
+-    return false;
++    // Only one occlusion query can be active at a time; a begin without an end replaces it.
++    if (!BeginSubmission(true)) {
++      return false;
++    }
++    EndRenderPass();
++    deferred_command_buffer().CmdVkEndQuery(occlusion_query_pool_,
++                                            active_occlusion_query_.host_index);
++    active_occlusion_query_ = {};
+   }
+ 
+   uint32_t host_index = 0;
+@@ -4898,7 +4895,6 @@ bool VulkanCommandProcessor::BeginGuestOcclusionQuery(uint32_t sample_count_addr
+   DeferredCommandBuffer& command_buffer = deferred_command_buffer();
+   command_buffer.CmdVkResetQueryPool(occlusion_query_pool_, host_index, 1);
+   command_buffer.CmdVkBeginQuery(occlusion_query_pool_, host_index, 0);
+-  active_occlusion_query_.sample_count_address = sample_count_address;
+   active_occlusion_query_.host_index = host_index;
+   active_occlusion_query_.valid = true;
+   return true;

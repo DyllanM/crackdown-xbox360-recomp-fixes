@@ -40,6 +40,17 @@ void ApplyWindowIcon();
 // message box runs zenity first, which can stall before any window appears.
 void ShowFatalMessage(const std::string& text);
 
+struct GraphicsFallbackInfo {
+  std::string game_dir;
+  std::string game_files_status;
+  bool game_files_ready = false;
+};
+
+// Tells the player that graphics could not start. Windows shows a message box. Linux opens the launcher's window,
+// drawn on an SDL surface with no GPU: it shows the game files and graphics status, and Play explains the failure.
+// Returns when the player closes it.
+void RunLauncherWithoutGraphics(const GraphicsFallbackInfo& info);
+
 // True while Shift is held. On Linux SDL only knows the keyboard once a window has focus.
 bool ShiftHeld();
 
