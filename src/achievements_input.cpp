@@ -11,6 +11,8 @@
 #include <rex/ppc.h>
 
 #include "achievements_overlay_rules.h"
+#include "cheat_hooks.h"
+#include "cheat_menu_input.h"
 
 namespace crackdown {
 namespace {
@@ -75,5 +77,11 @@ REX_HOOK_RAW(sub_82743798) {
   const uint32_t user = ctx.r3.u32;
   const uint32_t state = ctx.r4.u32;
   __imp__sub_82743798(ctx, base);
+  if (state && ctx.r3.u32 == 0) {
+    crackdown::cheats::FilterMenuInput(base, user, state);
+  }
+  if (user == 0) {
+    crackdown::cheats::RunGameTick(base);
+  }
   crackdown::FilterGuestInput(ctx, base, user, state);
 }

@@ -6,6 +6,8 @@
 #include <string>
 #include <string_view>
 
+#include <cstdint>
+
 #include <rex/cvar.h>
 
 #include "trg/settings.h"
@@ -29,6 +31,13 @@ REXCVAR_DECLARE(int32_t, crackdown_launcher_width);
 REXCVAR_DECLARE(int32_t, crackdown_launcher_height);
 REXCVAR_DECLARE(bool, crackdown_launcher_maximized);
 REXCVAR_DECLARE(bool, crackdown_launcher_fullscreen);
+REXCVAR_DECLARE(bool, cheat_infinite_health);
+REXCVAR_DECLARE(int32_t, cheat_movement_speed);
+REXCVAR_DECLARE(int32_t, cheat_jump_height);
+REXCVAR_DECLARE(bool, cheat_no_fall_damage);
+REXCVAR_DECLARE(bool, cheat_infinite_ammo);
+REXCVAR_DECLARE(bool, cheat_infinite_vehicle_health);
+REXCVAR_DECLARE(int32_t, cheat_vehicle_speed);
 
 namespace crackdown {
 
@@ -44,6 +53,9 @@ inline constexpr char kFullscreenKey[] = "fullscreen";
 inline std::filesystem::path PlayerSettingsPath(const std::filesystem::path& user_data_root) {
   return user_data_root / "settings.toml";
 }
+
+// The cheats the launcher saved become the values the game starts with.
+void SyncSavedCheats();
 
 // Makes the file loadable (ReXGlue discards a whole file for one invalid line), then loads it.
 void LoadPlayerSettings(const std::filesystem::path& path);

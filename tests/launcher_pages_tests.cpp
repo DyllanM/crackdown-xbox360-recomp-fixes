@@ -13,10 +13,15 @@ int IndexOf(LauncherPage page) {
 }
 
 void TestPageOrder() {
-  const std::array expected = {LauncherPage::kPlay,     LauncherPage::kDisplay,      LauncherPage::kGraphics,
-                               LauncherPage::kGameplay, LauncherPage::kControls,     LauncherPage::kAchievements,
-                               LauncherPage::kAbout};
+  const std::array expected = {LauncherPage::kPlay,         LauncherPage::kDisplay,    LauncherPage::kGraphics,
+                               LauncherPage::kGameplay,     LauncherPage::kCheats,     LauncherPage::kControls,
+                               LauncherPage::kAchievements, LauncherPage::kAbout};
   CHECK(kLauncherPageOrder == expected);
+}
+
+void TestCheatsBetweenGameplayAndControls() {
+  CHECK(IndexOf(LauncherPage::kCheats) == IndexOf(LauncherPage::kGameplay) + 1);
+  CHECK(IndexOf(LauncherPage::kControls) == IndexOf(LauncherPage::kCheats) + 1);
 }
 
 void TestAchievementsBetweenControlsAndAbout() {
@@ -28,6 +33,7 @@ void TestAchievementsBetweenControlsAndAbout() {
 
 int main() {
   TestPageOrder();
+  TestCheatsBetweenGameplayAndControls();
   TestAchievementsBetweenControlsAndAbout();
   return check::Finish("launcher_pages_tests");
 }

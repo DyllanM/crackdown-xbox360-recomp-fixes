@@ -57,6 +57,11 @@ set(CRACKDOWN_SOURCES
     src/audio_pcm_firewall.cpp
     src/audio_wave_timeout.cpp
     src/cache_device.cpp
+    src/cheat_hooks.cpp
+    src/cheat_menu_input.cpp
+    src/cheat_menu_overlay.cpp
+    src/cheats.cpp
+    src/debug_saulo_crash.cpp
     src/crt_native.cpp
     src/frame_counter.cpp
     src/frame_pacing.cpp

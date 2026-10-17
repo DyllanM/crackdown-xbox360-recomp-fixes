@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,7 +24,9 @@
 #include "trg/launcher.h"
 #include "trg/platform.h"
 
+#include "agency_accent.h"
 #include "aspect_ratio.h"
+#include "cheats.h"
 #include "frame_timing.h"
 #include "game_files.h"
 #include "graphics_adapters.h"
@@ -49,7 +52,7 @@ constexpr double kPlayFeedbackSeconds = 0.4;
 constexpr ImGuiConfigFlags kNavFlags = ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
 
 // The Agency's HUD blue, over the Midnight background.
-const ImVec4 kAccent = ImVec4(0.25f, 0.65f, 0.95f, 1.0f);
+const ImVec4 kAccent = ImVec4(kAccentRed, kAccentGreen, kAccentBlue, 1.0f);
 const ImVec4 kDeepBlue = ImVec4(0.07f, 0.18f, 0.35f, 1.0f);
 
 trg::Theme LauncherTheme() {
@@ -415,6 +418,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       case LauncherPage::kGameplay:
         return {"Gameplay", "Frame rate, and what the window shows while you play.",
                 [](trg::Ui& ui) { PageGameplay(ui); }, nullptr};
+      case LauncherPage::kCheats:
+        return {"Cheats", "Optional gameplay modifiers", [](trg::Ui& ui) { PageCheats(ui); }, nullptr};
       case LauncherPage::kControls:
         return {"Controls", "Controller, keyboard and mouse.", [](trg::Ui& ui) { PageControls(ui); }, nullptr};
       case LauncherPage::kAchievements:
@@ -742,6 +747,32 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
               "crackdown_show_render_resolution", false, "Off", "On");
     ui.Toggle("Frame counter", "Shows the game's frame rate in the corner. F2 toggles it while playing.",
               "crackdown_show_frame_counter", false, "Hidden", "Shown");
+  }
+
+  static std::vector<trg::Option> MultiplierOptions(std::span<const int> values) {
+    std::vector<trg::Option> options;
+    for (const int value : values) {
+      options.push_back({std::to_string(value), cheats::ValueLabel(cheats::Kind::Multiplier, value)});
+    }
+    return options;
+  }
+
+  static void PageCheats(trg::Ui& ui) {
+    ui.Paragraph("Cheats start with these values. F10 in the game changes them for that session only.");
+    ui.Heading("PLAYER");
+    ui.Toggle("Infinite Health", "Your character takes no damage.", "cheat_infinite_health", false, "Off", "On");
+    ui.Combo("Movement Speed", "How much faster your character moves on foot.", "cheat_movement_speed", "0",
+             MultiplierOptions(cheats::kMovementValues));
+    ui.Combo("Jump Height", "How much higher your character jumps.", "cheat_jump_height", "0",
+             MultiplierOptions(cheats::kMovementValues));
+    ui.Toggle("No Fall Damage", "Falling does not hurt your character.", "cheat_no_fall_damage", false, "Off", "On");
+    ui.Heading("WEAPONS");
+    ui.Toggle("Infinite Ammo", "Weapons never run out of ammunition.", "cheat_infinite_ammo", false, "Off", "On");
+    ui.Heading("VEHICLE");
+    ui.Toggle("Infinite Vehicle Health", "The vehicle you drive takes no damage.", "cheat_infinite_vehicle_health",
+              false, "Off", "On");
+    ui.Combo("Vehicle Speed", "How much faster the vehicle you drive goes.", "cheat_vehicle_speed", "0",
+             MultiplierOptions(cheats::kVehicleValues));
   }
 
   static void PageControls(trg::Ui& ui) {

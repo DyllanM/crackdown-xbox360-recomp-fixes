@@ -20,6 +20,10 @@
 #include "achievements_overlay.h"
 #include "aspect_ratio.h"
 #include "cache_device.h"
+#include "cheat_menu_input.h"
+#include "cheat_menu_key.h"
+#include "cheat_menu_overlay.h"
+#include "debug_saulo_crash.h"
 #include "frame_counter.h"
 #include "frame_rate.h"
 #include "game_files.h"
@@ -152,7 +156,7 @@ class CrackdownApp : public rex::ReXApp {
 
   // F7 toggles the overlay owned here; ReXApp's own list has no B, X or controller handling.
   std::unique_ptr<rex::ui::ImGuiDialog> CreateAchievementsOverlay() override {
-    if (launcher_open_) {
+    if (launcher_open_ || cheat_menu_) {
       return nullptr;
     }
     if (achievements_) {
@@ -171,6 +175,7 @@ class CrackdownApp : public rex::ReXApp {
                           std::atoi(rex::cvar::GetFlagByName("internal_render_scale").c_str())));
     if (runtime()) {
       MountCacheDevice(runtime()->file_system(), user_data_root());
+      crackdown::InstallCrashDiagnostics(runtime()->virtual_membase());
     }
     if (window()) {
       AttachWindowHost(
@@ -187,6 +192,10 @@ class CrackdownApp : public rex::ReXApp {
     crackdown::SetAchievementsCloseRequest(
         [this] { app_context().CallInUIThreadDeferred([this] { CloseAchievements(); }); });
     InstallSkipIntro();
+    if (window()) {
+      cheat_menu_key_ = std::make_unique<crackdown::CheatMenuKey>(
+          window(), [this] { app_context().CallInUIThreadDeferred([this] { ToggleCheatMenu(); }); });
+    }
   }
 
   void OnFileDrop(rex::ui::FileDropEvent& e) override { crackdown::LauncherFileDropped(e.filename()); }
@@ -197,6 +206,8 @@ class CrackdownApp : public rex::ReXApp {
       input->Shutdown();
     }
     CloseAchievements();
+    cheat_menu_key_.reset();
+    CloseCheatMenu();
     DetachWindowHost();
     crackdown::DetachFrameRate();
   }
@@ -235,7 +246,8 @@ class CrackdownApp : public rex::ReXApp {
   }
 
   void OpenAchievements() {
-    if (achievements_ || !runtime() || !runtime()->kernel_state() || !imgui_drawer() || !immediate_drawer()) {
+    if (achievements_ || cheat_menu_ || !runtime() || !runtime()->kernel_state() || !imgui_drawer() ||
+        !immediate_drawer()) {
       return;
     }
     achievements_ = std::make_unique<crackdown::AchievementsOverlay>(
@@ -253,6 +265,33 @@ class CrackdownApp : public rex::ReXApp {
     }
     achievements_.reset();
     crackdown::SetAchievementsModal(false);
+  }
+
+  void ToggleCheatMenu() {
+    if (cheat_menu_) {
+      cheat_menu_->RequestClose();
+    } else {
+      OpenCheatMenu();
+    }
+  }
+
+  void OpenCheatMenu() {
+    if (launcher_open_ || achievements_ || !runtime() || !imgui_drawer()) {
+      return;
+    }
+    crackdown::cheats::SetMenuInputOpen(true);
+    cheat_menu_ = std::make_unique<crackdown::CheatMenuOverlay>(
+        imgui_drawer(), crackdown::CheatMenuOverlay::Controls{
+                            .finished = [this] { app_context().CallInUIThreadDeferred([this] { CloseCheatMenu(); }); },
+                        });
+  }
+
+  void CloseCheatMenu() {
+    if (!cheat_menu_) {
+      return;
+    }
+    cheat_menu_.reset();
+    crackdown::cheats::SetMenuInputOpen(false);
   }
 
   crackdown::GraphicsFallbackInfo DescribeGameFiles() const {
@@ -297,6 +336,8 @@ class CrackdownApp : public rex::ReXApp {
   std::filesystem::path shipped_config_;
   crackdown::UserDataSelection user_data_;
   std::unique_ptr<crackdown::AchievementsOverlay> achievements_;
+  std::unique_ptr<crackdown::CheatMenuOverlay> cheat_menu_;
+  std::unique_ptr<crackdown::CheatMenuKey> cheat_menu_key_;
   bool show_launcher_ = false;
   bool show_launcher_after_runtime_ = false;
   bool launcher_open_ = false;
