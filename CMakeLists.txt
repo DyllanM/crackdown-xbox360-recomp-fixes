@@ -50,6 +50,7 @@ get_directory_property(CRACKDOWN_TRG_VERSION DIRECTORY "${_trg_dir}" DEFINITION 
 
 set(CRACKDOWN_SOURCES
     src/main.cpp
+    src/aspect_render.cpp
     src/audio_mixer_priority.cpp
     src/audio_pcm_firewall.cpp
     src/audio_wave_timeout.cpp

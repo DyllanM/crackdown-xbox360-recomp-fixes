@@ -20,6 +20,7 @@ REXCVAR_DECLARE(bool, crackdown_show_fps);
 REXCVAR_DECLARE(bool, crackdown_show_frame_counter);
 REXCVAR_DECLARE(bool, crackdown_msaa_compatibility);
 REXCVAR_DECLARE(std::string, crackdown_graphics_adapter);
+REXCVAR_DECLARE(std::string, crackdown_aspect_ratio);
 REXCVAR_DECLARE(int32_t, crackdown_launcher_x);
 REXCVAR_DECLARE(int32_t, crackdown_launcher_y);
 REXCVAR_DECLARE(int32_t, crackdown_launcher_width);
@@ -48,6 +49,10 @@ void LoadPlayerSettings(const std::filesystem::path& path);
 // Sets the Xenos native_2x_msaa cvar from the launcher's Multisampling choice. Call once the GPU plugin has
 // registered its cvars and before emulation starts.
 void ApplyMultisampling();
+
+// Sets the guest video mode to the Aspect Ratio's canvas, whatever the window size. 16:9 Original sets none. Call once
+// the window exists and before emulation starts.
+void ApplyAspectRatio();
 
 // Windows: makes the D3D12 render target path the host one when Internal render resolution is below 100%. Call once
 // the launcher choices are applied and before the command processor is created.

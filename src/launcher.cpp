@@ -21,11 +21,13 @@
 #include "trg/launcher.h"
 #include "trg/platform.h"
 
+#include "aspect_ratio.h"
 #include "frame_timing.h"
 #include "game_files.h"
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
 #include "platform.h"
+#include "presentation_setting.h"
 #include "settings.h"
 
 namespace crackdown {
@@ -37,8 +39,6 @@ constexpr std::pair<int, int> kLauncherWindowSize = {1280, 720};
 constexpr double kLauncherMaxShare = 0.9;
 // How long the saved message stays on screen before the game starts.
 constexpr double kPlayFeedbackSeconds = 0.4;
-
-constexpr std::pair<int, int> kWindowSizes[] = {{1280, 720}, {1600, 900}, {1920, 1080}, {2560, 1440}};
 
 constexpr ImGuiConfigFlags kNavFlags = ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
 
@@ -78,15 +78,24 @@ std::string Size(int width, int height) {
   return std::to_string(width) + " \xC3\x97 " + std::to_string(height);
 }
 
-std::vector<trg::Option> RenderResolutionOptions() {
+std::vector<trg::Option> RenderResolutionOptions(AspectRatio aspect) {
+  const WindowSize picture = RenderPicture(aspect);
   std::vector<trg::Option> options;
   for (int scale = 1; scale <= 4; ++scale) {
     std::string label = scale == 1 ? "Original" : std::to_string(scale) + "x";
-    label += " \xE2\x80\x94 " + std::to_string(kPresentedWidth * scale) + "x" + std::to_string(kPresentedHeight * scale);
+    label += " \xE2\x80\x94 " + std::to_string(picture.width * scale) + "x" + std::to_string(picture.height * scale);
     if (scale == 2) {
       label += " \xE2\x80\x94 Recommended for 1440p";
     }
     options.push_back({std::to_string(scale), label});
+  }
+  return options;
+}
+
+std::vector<trg::Option> AspectRatioOptions() {
+  std::vector<trg::Option> options;
+  for (const AspectRatioInfo& info : kAspectRatios) {
+    options.push_back({info.key, info.label});
   }
   return options;
 }
@@ -116,6 +125,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         monitors_(ListMonitors()),
         graphics_adapters_(ListGraphicsAdapters()) {
     g_dialog = this;
+    if (SelectedAspectRatio() != AspectRatio::k16x9) {
+      SelectWindowSizeForAspect();
+    }
     launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
     if (WindowFullscreen()) {
       restore_when_windowed_ = true;
@@ -508,6 +520,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     WindowSizeCombo();
     ui.Row("Monitor", "The display the game opens on.");
     MonitorCombo();
+    if (ui.Combo("Aspect Ratio", "Sets the game's target rendering format and the Window size choices.",
+                 "crackdown_aspect_ratio", "16:9", AspectRatioOptions())) {
+      SelectWindowSizeForAspect();
+    }
     ui.Row("VSync", "On prevents tearing. Off allows it, for the lowest latency and G-Sync/FreeSync.");
     {
       const bool tearing = settings_.GetBool(kTearingSetting, true);
@@ -515,11 +531,11 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         settings_.SetBool(kTearingSetting, i == 0);
       }
     }
-    ui.Row("Aspect ratio", "Letterbox keeps the game's 16:9 picture on any window shape; Stretch fills the window.");
+    ui.Row(kPresentationLabel, kPresentationHelp);
     {
-      const bool letterbox = settings_.GetBool("present_letterbox", true);
-      if (int i = ui.Segmented("aspect", {"Letterbox 16:9", "Stretch"}, letterbox ? 0 : 1); i >= 0) {
-        settings_.SetBool("present_letterbox", i == 0);
+      const bool letterbox = settings_.GetBool(kLetterboxSetting, true);
+      if (int i = ui.Segmented("presentation", {"Letterbox", "Stretch"}, LetterboxSegment(letterbox)); i >= 0) {
+        settings_.SetBool(kLetterboxSetting, LetterboxFromSegment(i));
       }
     }
   }
@@ -537,10 +553,32 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     return monitors_.empty() ? nullptr : &monitors_.front();
   }
 
+  AspectRatio SelectedAspectRatio() const {
+    return ParseAspectRatio(settings_.Get("crackdown_aspect_ratio", "16:9"));
+  }
+
+  // Whether a Window size fits the display at its scale, so the game window is not larger than the screen.
+  static bool WindowSizeFits(int width, int height, const MonitorInfo* monitor) {
+    return !monitor || (width * monitor->scale < monitor->width && height * monitor->scale < monitor->height);
+  }
+
+  void SelectWindowSizeForAspect() {
+    const MonitorInfo* monitor = SelectedMonitor();
+    const WindowSize current{settings_.GetInt("window_width", 0), settings_.GetInt("window_height", 0)};
+    const WindowSize chosen = WindowSizeForAspect(SelectedAspectRatio(), current, [monitor](WindowSize size) {
+      return WindowSizeFits(size.width, size.height, monitor);
+    });
+    if (chosen.width != current.width || chosen.height != current.height) {
+      settings_.SetInt("window_width", chosen.width);
+      settings_.SetInt("window_height", chosen.height);
+    }
+  }
+
   // window_width/height are logical pixels; display scaling enlarges them.
   void WindowSizeCombo() {
     const int width = settings_.GetInt("window_width", 0);
     const int height = settings_.GetInt("window_height", 0);
+    const AspectRatio aspect = SelectedAspectRatio();
     const MonitorInfo* monitor = SelectedMonitor();
     const float scale = monitor ? monitor->scale : 1.0f;
     auto label = [scale](int w, int h) {
@@ -554,15 +592,17 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       return text;
     };
     if (ImGui::BeginCombo("##window_size", label(width, height).c_str())) {
-      for (const auto& [w, h] : kWindowSizes) {
-        const bool current = w == width && h == height;
-        const bool fits = !monitor || (w * scale < monitor->width && h * scale < monitor->height);
-        if (!current && !fits) {
+      for (const AspectWindowSize& size : kWindowSizes) {
+        if (size.aspect != aspect) {
           continue;
         }
-        if (ImGui::Selectable(label(w, h).c_str(), current) && !current) {
-          settings_.SetInt("window_width", w);
-          settings_.SetInt("window_height", h);
+        const bool current = size.width == width && size.height == height;
+        if (!current && !WindowSizeFits(size.width, size.height, monitor)) {
+          continue;
+        }
+        if (ImGui::Selectable(label(size.width, size.height).c_str(), current) && !current) {
+          settings_.SetInt("window_width", size.width);
+          settings_.SetInt("window_height", size.height);
         }
       }
       ImGui::EndCombo();
@@ -606,7 +646,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     ui.Combo("Render resolution",
              "Draws the game at a multiple of its own picture, then scales it to the window. Higher is sharper and "
              "costs more GPU time. Window size is separate.",
-             "resolution_scale", "1", RenderResolutionOptions());
+             "resolution_scale", "1", RenderResolutionOptions(SelectedAspectRatio()));
     ui.Combo("Internal render resolution",
              "Renders the game internally at a lower resolution, then scales it to the selected render resolution. "
              "Lower values improve GPU performance but reduce image sharpness.",

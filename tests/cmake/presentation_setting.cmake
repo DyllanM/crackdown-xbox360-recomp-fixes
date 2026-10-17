@@ -1,0 +1,1 @@
+crackdown_add_test(presentation_setting_tests SOURCES presentation_setting_tests.cpp)

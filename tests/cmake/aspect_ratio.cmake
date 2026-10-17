@@ -1,0 +1,1 @@
+crackdown_add_test(aspect_ratio_tests SOURCES aspect_ratio_tests.cpp)

@@ -4,11 +4,9 @@
 #include <string>
 #include <string_view>
 
-namespace crackdown {
+#include "aspect_ratio.h"
 
-// The guest video mode is pinned to this in crackdown.toml; resolution_scale multiplies it.
-inline constexpr int kPresentedWidth = 1280;
-inline constexpr int kPresentedHeight = 720;
+namespace crackdown {
 
 inline constexpr int kInternalRenderScaleNative = 100;
 inline constexpr int kInternalRenderScalePerformance = 75;
@@ -43,21 +41,21 @@ inline std::optional<std::string_view> RequiredRenderTargetPath(int percent, std
   return "rtv";
 }
 
-inline int InternalRenderWidth(int resolution_scale, int percent) {
-  return kPresentedWidth * resolution_scale * NormalizeInternalRenderScale(percent) / 100;
+// `picture` is the guest video mode at Render resolution 1x.
+inline int InternalRenderWidth(WindowSize picture, int resolution_scale, int percent) {
+  return picture.width * resolution_scale * NormalizeInternalRenderScale(percent) / 100;
 }
 
-inline int InternalRenderHeight(int resolution_scale, int percent) {
-  return kPresentedHeight * resolution_scale * NormalizeInternalRenderScale(percent) / 100;
+inline int InternalRenderHeight(WindowSize picture, int resolution_scale, int percent) {
+  return picture.height * resolution_scale * NormalizeInternalRenderScale(percent) / 100;
 }
 
-inline std::string DescribeInternalRenderResolution(int resolution_scale, int percent) {
+inline std::string DescribeInternalRenderResolution(WindowSize picture, int resolution_scale, int percent) {
   percent = NormalizeInternalRenderScale(percent);
   return "Internal render resolution: " + std::to_string(percent) + "% " +
-         std::to_string(InternalRenderWidth(resolution_scale, percent)) + "x" +
-         std::to_string(InternalRenderHeight(resolution_scale, percent)) + " -> " +
-         std::to_string(kPresentedWidth * resolution_scale) + "x" +
-         std::to_string(kPresentedHeight * resolution_scale);
+         std::to_string(InternalRenderWidth(picture, resolution_scale, percent)) + "x" +
+         std::to_string(InternalRenderHeight(picture, resolution_scale, percent)) + " -> " +
+         std::to_string(picture.width * resolution_scale) + "x" + std::to_string(picture.height * resolution_scale);
 }
 
 }  // namespace crackdown

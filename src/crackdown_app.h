@@ -16,6 +16,7 @@
 #include <rex/ui/ui_event.h>
 #include <rex/ui/windowed_app_context.h>
 
+#include "aspect_ratio.h"
 #include "cache_device.h"
 #include "debug_saulo_diagnostics.h"
 #include "debug_saulo_frame30.h"
@@ -107,6 +108,7 @@ class CrackdownApp : public rex::ReXApp {
       show_launcher_ = true;
     }
     if (!show_launcher_) {
+      crackdown::ApplyAspectRatio();
       crackdown::ApplyInternalRenderPath();
       crackdown::ApplyMultisampling();
       return defaults;
@@ -148,8 +150,10 @@ class CrackdownApp : public rex::ReXApp {
   }
 
   void OnPostSetup() override {
+    const crackdown::WindowSize picture =
+        crackdown::RenderPicture(crackdown::ParseAspectRatio(REXCVAR_GET(crackdown_aspect_ratio)));
     REXLOG_INFO("{}", crackdown::DescribeInternalRenderResolution(
-                          std::max(1, std::atoi(rex::cvar::GetFlagByName("resolution_scale").c_str())),
+                          picture, std::max(1, std::atoi(rex::cvar::GetFlagByName("resolution_scale").c_str())),
                           std::atoi(rex::cvar::GetFlagByName("internal_render_scale").c_str())));
     if (runtime()) {
       MountCacheDevice(runtime()->file_system(), user_data_root());

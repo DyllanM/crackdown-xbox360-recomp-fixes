@@ -14,11 +14,13 @@
 
 #include "trg/settings.h"
 
+#include "aspect_ratio.h"
 #include "frame_timing.h"
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
 #include "multisampling.h"
 #include "platform.h"
+#include "presentation_setting.h"
 #include "settings_file.h"
 
 REXCVAR_DEFINE_BOOL(crackdown_launcher, true, "Crackdown",
@@ -36,6 +38,8 @@ REXCVAR_DEFINE_BOOL(crackdown_msaa_compatibility, false, "Crackdown",
                     "MSAA misrenders (sets native_2x_msaa)");
 REXCVAR_DEFINE_STRING(crackdown_graphics_adapter, "auto", "Crackdown",
                       "Graphics card: auto, or the index d3d12_adapter takes (applied at start)");
+REXCVAR_DEFINE_STRING(crackdown_aspect_ratio, "16:9", "Crackdown",
+                      "Aspect ratio the game renders in: 16:9, 16:10, 21:9, 32:9, 4:3 or 5:4 (applied at start)");
 REXCVAR_DEFINE_INT32(crackdown_launcher_x, 0, "Crackdown", "Launcher window left edge, written by the launcher");
 REXCVAR_DEFINE_INT32(crackdown_launcher_y, 0, "Crackdown", "Launcher window top edge, written by the launcher");
 REXCVAR_DEFINE_INT32(crackdown_launcher_width, 0, "Crackdown",
@@ -61,7 +65,8 @@ const std::vector<std::string> kGameSettingKeys = {
     "monitor",
     kTearingSetting,
     "crackdown_graphics_adapter",
-    "present_letterbox",
+    "crackdown_aspect_ratio",
+    kLetterboxSetting,
     "resolution_scale",
     "internal_render_scale",
     "swap_post_effect",
@@ -323,6 +328,7 @@ void GameSettings::Apply() const {
     }
     rex::cvar::SetFlagByName(key, value);
   }
+  ApplyAspectRatio();
   ApplyInternalRenderPath();
   ApplyMultisampling();
 }
@@ -339,6 +345,21 @@ void GameSettings::ApplyDisplayMode() const {
 void ApplyMultisampling() {
   rex::cvar::SetFlagByName("native_2x_msaa",
                            Native2xMsaaFor(REXCVAR_GET(crackdown_msaa_compatibility)) ? "true" : "false");
+}
+
+// ReXGlue takes the guest video mode from the window cvars while a video_mode cvar holds its default. The window has
+// consumed them already, so clearing them leaves the video_mode cvars in charge.
+void ApplyAspectRatio() {
+  const AspectRatio aspect = ParseAspectRatio(REXCVAR_GET(crackdown_aspect_ratio));
+  const std::optional<WindowSize> picture = PinnedVideoMode(aspect);
+  if (!picture) {
+    return;
+  }
+  rex::cvar::SetFlagByName("video_mode_width", std::to_string(picture->width));
+  rex::cvar::SetFlagByName("video_mode_height", std::to_string(picture->height));
+  rex::cvar::SetFlagByName("window_width", "0");
+  rex::cvar::SetFlagByName("window_height", "0");
+  REXLOG_INFO("Aspect ratio: {} ({}x{})", InfoFor(aspect).key, picture->width, picture->height);
 }
 
 void ApplyInternalRenderPath() {
