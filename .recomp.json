@@ -1,0 +1,41 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Crackdown",
+  "system": "Xbox 360",
+  "type": "recomp",
+  "original": {
+    "revision": "1.0"
+  },
+  "project": "Crackdown Recompiled",
+  "status": "released",
+  "targets": [
+    "Windows",
+    "Linux",
+    "Steam Deck"
+  ],
+  "toolchain": "Rexglue",
+  "approach": "Static recompilation of the original Xbox 360 retail version to native PC code using ReXGlue",
+  "maintainers": [
+    {
+      "name": "saulob",
+      "link": "https://github.com/saulob"
+    }
+  ],
+  "links": [
+    {
+      "label": "Latest release",
+      "url": "https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest"
+    },
+    {
+      "label": "Reddit announcement",
+      "url": "https://www.reddit.com/r/recomps/comments/1x7z5r0/crackdown_recompiled_for_pc_native_windows/"
+    }
+  ],
+  "tags": [
+    "launcher",
+    "high-fps",
+    "ultrawide",
+    "achievements"
+  ],
+  "notes": "Public native Windows release with experimental Linux/Steam Deck AppImage support. Includes the TRG launcher, rendering up to 4x resolution, frame rates up to 240 FPS and Unlimited, native ultrawide and super ultrawide aspect ratios, internal render resolution scaling, offline achievements, language selection, Skip Intro, GPU selection on Windows, and portable user data."
+}
