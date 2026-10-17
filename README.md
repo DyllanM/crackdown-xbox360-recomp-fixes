@@ -93,6 +93,7 @@ Window size, monitor, VSync and graphics card take effect when you press **PLAY*
 
 ### Gameplay
 - **Skip intro**: starts directly at the title screen, without the startup videos. Off by default.
+- **Language**: the game's own text and spoken dialogue: English (the default), French, German, Italian, Spanish (Spain), Spanish (Latin America), Czech, Polish, Hungarian or Japanese. Uses the localized files already in your game data; applied when the game starts.
 - **Frame rate**: 30 (Original), 60 (Recommended), 90, 120, 144, 165, 240 or Unlimited
 - **Frame rate in title**: shows the frame rate in the window title, for example `Crackdown Recompiled | FPS: 60.00`. On by default.
 - **Render resolution in title**: shows the render resolution in the window title, for example `Crackdown Recompiled | 2560x1440 | FPS: 60.00`. Off by default.

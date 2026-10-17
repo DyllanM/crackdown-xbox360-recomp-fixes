@@ -26,6 +26,7 @@
 #include "game_files.h"
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
+#include "language_setting.h"
 #include "platform.h"
 #include "presentation_setting.h"
 #include "settings.h"
@@ -672,6 +673,11 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   static void PageGameplay(trg::Ui& ui) {
     ui.Toggle("Skip intro", "Start directly at the title screen", "crackdown_skip_intro", false, "Off", "On");
+    std::vector<trg::Option> languages;
+    for (const GameLanguage& language : kGameLanguages) {
+      languages.push_back({language.key, language.label});
+    }
+    ui.Combo(kLanguageLabel, kLanguageHelp, kLanguageSetting, kDefaultLanguage, languages);
     std::vector<trg::Option> frame_rates;
     for (const auto& [value, label] : FrameRateOptions()) {
       frame_rates.push_back({value, label});

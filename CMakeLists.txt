@@ -67,6 +67,7 @@ set(CRACKDOWN_SOURCES
     src/settings.cpp
     src/settings_file.cpp
     src/title_compat.cpp
+    src/title_language.cpp
     src/user_data.cpp
     src/window_host.cpp
     src/xdvdfs.cpp

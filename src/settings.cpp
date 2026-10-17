@@ -18,6 +18,7 @@
 #include "frame_timing.h"
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
+#include "language_setting.h"
 #include "multisampling.h"
 #include "platform.h"
 #include "presentation_setting.h"
@@ -42,6 +43,8 @@ REXCVAR_DEFINE_STRING(crackdown_graphics_adapter, "auto", "Crackdown",
                       "Graphics card: auto, or the index d3d12_adapter takes (applied at start)");
 REXCVAR_DEFINE_STRING(crackdown_aspect_ratio, "16:9", "Crackdown",
                       "Aspect ratio the game renders in: 16:9, 16:10, 21:9, 32:9, 4:3 or 5:4 (applied at start)");
+REXCVAR_DEFINE_STRING(crackdown_language, "en-US", "Crackdown",
+                      "Game language as a Local folder name, such as en-US or fr-FR (applied at start)");
 REXCVAR_DEFINE_INT32(crackdown_launcher_x, 0, "Crackdown", "Launcher window left edge, written by the launcher");
 REXCVAR_DEFINE_INT32(crackdown_launcher_y, 0, "Crackdown", "Launcher window top edge, written by the launcher");
 REXCVAR_DEFINE_INT32(crackdown_launcher_width, 0, "Crackdown",
@@ -69,6 +72,7 @@ const std::vector<std::string> kGameSettingKeys = {
     kTearingSetting,
     "crackdown_graphics_adapter",
     "crackdown_aspect_ratio",
+    kLanguageSetting,
     kLetterboxSetting,
     "resolution_scale",
     "internal_render_scale",
