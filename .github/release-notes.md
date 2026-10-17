@@ -112,5 +112,5 @@ SHA-256 files are published with the release for both downloads: `Crackdown-v0.3
 
 | File | SHA-256 |
 | --- | --- |
-| `Crackdown-v0.3.0-windows-x64.zip` | `PENDING-STAMP` |
-| `CrackdownRecompiled-v0.3.0-x86_64.AppImage` | `PENDING-STAMP` |
+| `Crackdown-v0.3.0-windows-x64.zip` | `13ad37f7295aa9f0c1296afb0946553e508cd1ae2dadb9a2529304f5cf55fc21` |
+| `CrackdownRecompiled-v0.3.0-x86_64.AppImage` | `669b5a3d587232874c0df5c211527d3fb143957bd7d79f764ae92a27321fafa9` |
