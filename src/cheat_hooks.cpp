@@ -73,17 +73,7 @@ constexpr uint32_t kCharacterMotionFlagsOffset = 2345;
 constexpr uint8_t kUsesMotionFlag = 0x40;
 constexpr uint32_t kLaunchVelocityOffset = 1876;
 
-constexpr int kDiagnosticLimit = 8;
-
 std::atomic<bool> g_available{false};
-
-#define DEBUG_SAULO_CHEAT_LOG(counter, ...)                                  \
-  do {                                                                        \
-    static std::atomic<int> counter{0};                                       \
-    if (counter.fetch_add(1, std::memory_order_relaxed) < kDiagnosticLimit) { \
-      REXLOG_INFO("DEBUG_SAULO cheats: " __VA_ARGS__);                        \
-    }                                                                         \
-  } while (0)
 
 bool SinglePlayer(uint8_t* base) { return Load32(base, kCoopSessionGlobal) == 0; }
 
@@ -201,8 +191,6 @@ void ScaleWalkVelocity(PPCContext& ctx, uint8_t* base, GuestFunction original) {
 // the apex height scales by about the multiplier.
 void ScaleJumpLaunch(PPCContext& ctx, uint8_t* base, GuestFunction original) {
   const uint32_t action = ctx.r3.u32;
-  const uint32_t apex_out = ctx.r4.u32;
-  const uint32_t bound_out = ctx.r5.u32;
   const uint32_t owner = Load32(base, action + kActionOwnerOffset);
   const uint32_t character = Plausible(owner) ? Load32(base, owner + kActionCharacterOffset) : 0;
   original(ctx, base);
@@ -212,13 +200,6 @@ void ScaleJumpLaunch(PPCContext& ctx, uint8_t* base, GuestFunction original) {
   }
   const float launch = LoadFloat(base, character + kLaunchVelocityOffset);
   const float scaled = launch * std::sqrt(float(Factor(Cheat::JumpHeight)));
-  DEBUG_SAULO_CHEAT_LOG(jump_log,
-                        "jump x{} action={:08X} vtable={:08X} target76={:08X} stake5148={:08X} launch {} -> {} "
-                        "apex {} bound {}",
-                        Factor(Cheat::JumpHeight), action, Load32(base, action), Load32(base, action + 76),
-                        Load32(base, character + 5148), launch, scaled,
-                        Plausible(apex_out) ? LoadFloat(base, apex_out) : 0.0f,
-                        Plausible(bound_out) ? LoadFloat(base, bound_out) : 0.0f);
   StoreFloat(base, character + kLaunchVelocityOffset, scaled);
 }
 

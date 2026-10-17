@@ -1,6 +1,4 @@
-// DEBUG_SAULO crash: temporary diagnostics for guest access violations the runtime did not handle. Remove with the other DEBUG_SAULO lines.
-
-#include "debug_saulo_crash.h"
+#include "guest_fault_log.h"
 
 #include <atomic>
 #include <cstdint>
@@ -68,14 +66,14 @@ LONG CALLBACK OnAccessViolation(EXCEPTION_POINTERS* info) {
   if (const rex::runtime::ThreadState* thread = rex::runtime::ThreadState::Get(); thread && thread->context()) {
     const ::PPCContext& ctx = *thread->context();
     REXLOG_ERROR(
-        "DEBUG_SAULO crash: unhandled {} of guest 0x{:08X} rip=0x{:X} function=0x{:08X}{} thread=0x{:X} host_thread={} lr=0x{:08X} r1=0x{:08X} "
+        "[GUEST_FAULT] Unhandled {} of guest 0x{:08X} rip=0x{:X} function=0x{:08X}{} thread=0x{:X} host_thread={} lr=0x{:08X} r1=0x{:08X} "
         "r3=0x{:08X} r4=0x{:08X} r5=0x{:08X} r6=0x{:08X} r7=0x{:08X} r8=0x{:08X} r9=0x{:08X} r10=0x{:08X} "
         "r11=0x{:08X} r12=0x{:08X}",
         kind, guest_address, rip, function, located ? "" : " (unknown)", thread->thread_id(), GetCurrentThreadId(), uint32_t(ctx.lr),
         ctx.r1.u32, ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32, ctx.r7.u32, ctx.r8.u32, ctx.r9.u32,
         ctx.r10.u32, ctx.r11.u32, ctx.r12.u32);
   } else {
-    REXLOG_ERROR("DEBUG_SAULO crash: unhandled {} of guest 0x{:08X} rip=0x{:X} function=0x{:08X} no guest thread state",
+    REXLOG_ERROR("[GUEST_FAULT] Unhandled {} of guest 0x{:08X} rip=0x{:X} function=0x{:08X} no guest thread state",
                  kind, guest_address, rip, function);
   }
   return EXCEPTION_CONTINUE_SEARCH;
