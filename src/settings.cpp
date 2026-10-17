@@ -80,6 +80,7 @@ const std::vector<std::string> kGameSettingKeys = {
     "crackdown_msaa_compatibility",
     "anisotropic_override",
     "mnk_mode",
+    "mnk_sensitivity",
 };
 
 const std::vector<std::string> kWindowKeys = {
@@ -100,6 +101,11 @@ std::string WindowValue(std::string_view key, const std::string& value) {
     return std::to_string(std::max(1, std::atoi(value.c_str())));
   }
   return value;
+}
+
+std::string ClampedSensitivity(const std::string& value) {
+  const double parsed = std::atof(value.c_str());
+  return std::to_string(std::clamp(parsed > 0.0 ? parsed : 1.0, 0.25, 3.0));
 }
 
 std::string TomlValue(std::string_view key, const std::string& value) {
@@ -333,7 +339,7 @@ void GameSettings::Apply() const {
     if (IsWindowKey(key) || key == kFullscreenKey || rex::cvar::GetFlagByName(key) == value) {
       continue;
     }
-    rex::cvar::SetFlagByName(key, value);
+    rex::cvar::SetFlagByName(key, key == "mnk_sensitivity" ? ClampedSensitivity(value) : value);
   }
   ApplyAspectRatio();
   ApplyInternalRenderPath();

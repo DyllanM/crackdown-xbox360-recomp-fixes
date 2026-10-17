@@ -372,7 +372,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         {"Graphics", "Graphics card, render resolution, anti-aliasing and texture filtering.",
          [this](trg::Ui& ui) { PageGraphics(ui); }},
         {"Gameplay", "Frame rate, and what the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
-        {"Controls", "Controller and keyboard.", [](trg::Ui& ui) { PageControls(ui); }},
+        {"Controls", "Controller, keyboard and mouse.", [](trg::Ui& ui) { PageControls(ui); }},
         {"About", "About this port, and where your files and settings live.",
          [this](trg::Ui& ui) { PageAbout(ui); }},
     };
@@ -696,10 +696,15 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   static void PageControls(trg::Ui& ui) {
     ui.Info("Controller", "Automatic: Xbox controllers work without setup.");
-    ui.Toggle("Keyboard", "Plays as an Xbox 360 controller, together with any connected controller.", "mnk_mode",
-              false, "Disabled", "Enabled");
+    ui.Toggle("Keyboard and Mouse",
+              "Plays as an Xbox 360 controller using keyboard and mouse, together with any connected controller.",
+              "mnk_mode", false, "Disabled", "Enabled");
+    ImGui::BeginDisabled(!ui.settings().GetBool("mnk_mode", false));
+    ui.SliderFloat("Mouse sensitivity", "How fast the mouse turns the camera.", "mnk_sensitivity", 1.0f, 0.25f, 3.0f,
+                   "%.2fx");
+    ImGui::EndDisabled();
     if (ui.Section("Keyboard keys")) {
-      ui.Help("Plain arrow keys are the right stick. Menus use W A S D or Shift + arrow keys.");
+      ui.Help("The mouse turns the camera, and so do the plain arrow keys. Menus use W A S D or Shift + arrow keys.");
       for (const rex::cvar::FlagEntry& e : rex::cvar::GetRegistry()) {
         if (e.category == "Input/Keybinds/Controller") {
           ui.Info(e.description.c_str(), KeyList(e.getter()).c_str());

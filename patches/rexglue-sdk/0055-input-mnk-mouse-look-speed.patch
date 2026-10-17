@@ -1,0 +1,97 @@
+Adapted from patches/sdk/0020-input-mnk-mouse-look-speed.patch in Unowa001/crackdown-recomp.
+Copyright (c) 2026, Jerrod (Unowa001). BSD 3-Clause License, see packaging/licenses/THIRD-PARTY-LICENSES.txt.
+
+diff --git a/include/rex/input/mnk/mnk_input_driver.h b/include/rex/input/mnk/mnk_input_driver.h
+index 4caee7f..cd7b0cb 100644
+--- a/include/rex/input/mnk/mnk_input_driver.h
++++ b/include/rex/input/mnk/mnk_input_driver.h
+@@ -79,6 +79,11 @@ class MnkInputDriver final : public InputDriver,
+   // Filled on the UI thread, drained on the guest thread, hence the lock.
+   float mouse_dx_ = 0.0f;
+   float mouse_dy_ = 0.0f;
++  // Mouse look stick and its hold, under state_mutex_.
++  uint64_t mouse_poll_tick_ = 0;
++  int32_t mouse_rx_ = 0;
++  int32_t mouse_ry_ = 0;
++  double mouse_hold_ = 0.0;
+ 
+   // UI thread only.
+   int32_t prev_mouse_x_ = 0;
+diff --git a/src/input/mnk/mnk_input_driver.cpp b/src/input/mnk/mnk_input_driver.cpp
+index fa305c1..37d252c 100644
+--- a/src/input/mnk/mnk_input_driver.cpp
++++ b/src/input/mnk/mnk_input_driver.cpp
+@@ -32,6 +32,14 @@ REXCVAR_DEFINE_BOOL(mnk_mouse, false, "Input",
+                     "from the keybind_rstick_* keys only");
+ REXCVAR_DEFINE_DOUBLE(mnk_sensitivity, 1.0, "Input", "Mouse sensitivity for right stick")
+     .range(0.01, 10.0);
++REXCVAR_DEFINE_DOUBLE(mnk_mouse_deadzone, 0.2652, "Input",
++                      "Right stick deflection a mouse movement starts from, as a fraction of full. "
++                      "Just past XInput's right stick deadzone (8689 of 32767)")
++    .range(0.0, 0.9);
++REXCVAR_DEFINE_DOUBLE(mnk_mouse_scale, 16.0, "Input",
++                      "Right stick units per pixel per second of mouse movement, before "
++                      "mnk_sensitivity (16: about 1500 px/s is full deflection)")
++    .range(0.1, 1000.0);
+ 
+ REXCVAR_DEFINE_STRING(keybind_a, "Semicolon,Space", "Input/Keybinds/Controller", "A button");
+ REXCVAR_DEFINE_STRING(keybind_b, "Quote,Backspace", "Input/Keybinds/Controller", "B button");
+@@ -303,6 +311,12 @@ X_RESULT MnkInputDriver::GetDeviceState(DeviceId id, X_INPUT_STATE* out_state) {
+                           has_focus_ && is_active());
+ 
+   if (!is_active() || !has_focus_) {
++    {
++      // Drop motion from the inactive time, so resuming does not snap the camera.
++      std::lock_guard lock(state_mutex_);
++      mouse_dx_ = 0.0f;
++      mouse_dy_ = 0.0f;
++    }
+     if (out_state) {
+       std::memset(out_state, 0, sizeof(*out_state));
+       out_state->packet_number = packet_number_;
+@@ -339,11 +353,41 @@ X_RESULT MnkInputDriver::GetDeviceState(DeviceId id, X_INPUT_STATE* out_state) {
+   if (IsBindPressed(key_down_, REXCVAR_GET(keybind_rstick_down)))
+     ry -= INT16_MAX;
+ 
++  // The stick comes from mouse speed over the time since the last poll, so it does not
++  // depend on the frame rate. A poll with no motion holds the last value for 25 ms. The
++  // first poll has no interval and ignores motion.
++  const uint64_t tick = rex::chrono::Clock::QueryHostTickCount();
++  const double poll_dt = mouse_poll_tick_ ? double(tick - mouse_poll_tick_) /
++                                                double(rex::chrono::Clock::QueryHostTickFrequency())
++                                          : 0.0;
++  mouse_poll_tick_ = tick;
+   if (REXCVAR_GET(mnk_mouse) && IsMouseLookActive()) {
+-    double sensitivity = REXCVAR_GET(mnk_sensitivity);
+-    constexpr double kBaseScale = 200.0;
+-    rx += static_cast<int32_t>(double(mouse_dx_) * sensitivity * kBaseScale);
+-    ry += static_cast<int32_t>(double(-mouse_dy_) * sensitivity * kBaseScale);
++    const double sensitivity = REXCVAR_GET(mnk_sensitivity);
++    const double scale = REXCVAR_GET(mnk_mouse_scale);
++    const double start = std::clamp(REXCVAR_GET(mnk_mouse_deadzone), 0.0, 0.9) * INT16_MAX;
++    const double dt = std::max(poll_dt, 1.0 / 1000.0);
++    auto stick = [&](double delta) -> int32_t {
++      if (delta == 0.0) {
++        return 0;
++      }
++      const double speed = std::abs(delta) / dt;  // pixels per second
++      return static_cast<int32_t>(
++          std::copysign(std::min<double>(INT16_MAX, start + speed * scale * sensitivity), delta));
++    };
++    if (poll_dt > 0.0 && (mouse_dx_ != 0.0f || mouse_dy_ != 0.0f)) {
++      mouse_rx_ = stick(mouse_dx_);
++      mouse_ry_ = stick(-mouse_dy_);
++      mouse_hold_ = 0.0;
++    } else if (mouse_rx_ || mouse_ry_) {
++      mouse_hold_ += poll_dt;
++      if (mouse_hold_ > 0.025) {
++        mouse_rx_ = mouse_ry_ = 0;
++      }
++    }
++    rx += mouse_rx_;
++    ry += mouse_ry_;
++  } else {
++    mouse_rx_ = mouse_ry_ = 0;
+   }
+   // Drained unconditionally: deltas keep accumulating in OnMouseMove while the
+   // mouse is off, and toggling it on would otherwise dump the whole backlog

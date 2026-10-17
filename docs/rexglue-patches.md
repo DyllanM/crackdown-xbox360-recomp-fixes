@@ -5,8 +5,8 @@ result is installed over the stock files in `tools/rexglue`. The game compiles a
 must not move virtual functions or data members of classes the generated game code uses.
 
 `NNNN-name.patch` applies on both platforms, `NNNN-name.windows.patch` only on Windows and `NNNN-name.linux.patch` only on
-Linux. Numbers are unique and patches apply in name order; gaps are fine. 28 patches are common, 11 are Windows only and
-11 are Linux only, so 39 apply on each platform. Patches 0005 and 0052 change the code generator and are the reason
+Linux. Numbers are unique and patches apply in name order; gaps are fine. 30 patches are common, 11 are Windows only and
+11 are Linux only, so 41 apply on each platform. Patches 0005 and 0052 change the code generator and are the reason
 `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
 
 | # | Platform | Purpose |
@@ -51,6 +51,11 @@ Linux. Numbers are unique and patches apply in name order; gaps are fine. 28 pat
 | 0051 | all | audio callbacks paced at the hardware's steady rate (`audio_callback_pacing`) |
 | 0052 | all | codegen: bit-exact `vrsqrtefp` estimate instead of an exact 1/sqrt; the helper is emitted into the generated `crackdown_pch.h` because the game compiles against the stock SDK headers; regenerate with `tools\codegen.ps1` |
 | 0053 | linux | Vulkan occlusion query results, the counterpart of 0006: the guest's begin and end blocks are separate, and the end block stays unfinished until the submission completes |
+| 0054 | all | keyboard and mouse binds also reach `XInputGetKeystroke` (menus such as Press Start), with the SDL driver's repeat timing |
+| 0055 | all | mouse look sets the right stick from mouse speed (`mnk_mouse_scale`, `mnk_mouse_deadzone`), so slow movement still turns the camera |
+
+Patches 0054 and 0055 are adapted from Unowa001/crackdown-recomp (BSD 3-Clause, notice in
+[THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).
 
 The AppImage runtime has its own pin and patch in `patches/appimage-runtime` (see [linux.md](linux.md)).
 

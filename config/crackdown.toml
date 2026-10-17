@@ -14,3 +14,8 @@ fullscreen = false
 window_width = 1280
 window_height = 720
 monitor = 1
+
+# Keyboard and mouse mode (launcher toggle): the mouse turns the camera, left click fires and right click locks on.
+mnk_mouse = true
+keybind_right_trigger = "E,O,LMB"
+keybind_left_trigger = "Q,I,RMB"

@@ -9,6 +9,8 @@
 #include <optional>
 #include <thread>
 
+#include <rex/cvar.h>
+#include <rex/input/mnk/mnk_input_driver.h>
 #include <rex/logging.h>
 #include <rex/ui/ui_event.h>
 #include <rex/ui/virtual_key.h>
@@ -203,11 +205,20 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
     UpdateCursorLocked();
   }
 
+  // Mouse look captures and hides the cursor for aiming, so the auto-hide policy leaves it alone.
+  bool MouseLookAims(bool gameplay) const {
+    return gameplay && window_->HasFocus() && rex::cvar::Query<bool>("mnk_mode") &&
+           rex::cvar::Query<bool>("mnk_mouse") && rex::input::mnk::IsMouseLookActive();
+  }
+
   void UpdateCursorLocked() {
     if (!window_) {
       return;
     }
     const bool gameplay = !mouse_free_ || mouse_free_();
+    if (MouseLookAims(gameplay)) {
+      return;
+    }
     const auto visibility = cursor_.Update(gameplay, window_->IsFullscreen(), window_->HasFocus(),
                                            crackdown::CursorHider::Clock::now());
     if (visibility) {
