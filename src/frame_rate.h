@@ -16,7 +16,8 @@ struct GuestFrameStats {
   uint64_t frame_count = 0;
 };
 
-// Updates the window title with the sampled rate while crackdown_show_fps is on. Call once the window exists.
+// Keeps the window title in step with the render resolution and the sampled rate, each while its setting is on. Call
+// once the window exists.
 void AttachFrameRate(rex::ui::Window* window, rex::ui::WindowedAppContext& app_context);
 void DetachFrameRate();
 

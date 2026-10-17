@@ -1,0 +1,1 @@
+crackdown_add_test(window_title_tests SOURCES window_title_tests.cpp)

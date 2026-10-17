@@ -17,6 +17,7 @@ REXCVAR_DECLARE(bool, crackdown_skip_launcher);
 REXCVAR_DECLARE(bool, crackdown_skip_intro);
 REXCVAR_DECLARE(int32_t, crackdown_frame_rate);
 REXCVAR_DECLARE(bool, crackdown_show_fps);
+REXCVAR_DECLARE(bool, crackdown_show_render_resolution);
 REXCVAR_DECLARE(bool, crackdown_show_frame_counter);
 REXCVAR_DECLARE(bool, crackdown_msaa_compatibility);
 REXCVAR_DECLARE(std::string, crackdown_graphics_adapter);

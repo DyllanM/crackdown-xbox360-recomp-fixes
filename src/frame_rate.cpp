@@ -1,14 +1,15 @@
 #include "frame_rate.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <mutex>
 #include <optional>
 #include <string>
 
-#include <fmt/format.h>
-
 #include <rex/hook.h>
+#include <rex/kernel/xboxkrnl/video.h>
 #include <rex/ppc.h>
 #include <rex/ui/window.h>
 #include <rex/ui/windowed_app_context.h>
@@ -16,6 +17,7 @@
 #include "debug_saulo_frame30.h"
 #include "platform.h"
 #include "settings.h"
+#include "window_title.h"
 
 // The SDK's VdSwap body, exported by rexruntime.dll. The SDK has no header for it.
 namespace rex::kernel::xboxkrnl {
@@ -43,11 +45,41 @@ uint64_t g_sample_frames = 0;
 uint64_t g_total_frames = 0;
 GuestFrameStats g_stats;
 
-void ShowFps(double fps) {
-  if (g_active.load(std::memory_order_relaxed)) {
-    g_window->SetTitle(REXCVAR_GET(crackdown_show_fps) ? fmt::format("{} | FPS: {:.2f}", kWindowTitle, fps)
-                                                        : std::string(kWindowTitle));
+// UI thread only.
+std::optional<double> g_shown_frame_rate;
+std::string g_shown_title;
+
+// The guest video mode is the picture the game draws; Render resolution multiplies it.
+WindowSize RenderResolution() {
+  rex::system::X_VIDEO_MODE mode{};
+  rex::kernel::xboxkrnl::VdQueryVideoMode(&mode);
+  const int scale = std::max(1, std::atoi(rex::cvar::GetFlagByName("resolution_scale").c_str()));
+  return {int(uint32_t(mode.display_width)) * scale, int(uint32_t(mode.display_height)) * scale};
+}
+
+// Rebuilds the whole title, so each update keeps the parts it does not change.
+void UpdateTitle() {
+  if (!g_active.load(std::memory_order_relaxed)) {
+    return;
   }
+  std::optional<WindowSize> render_resolution;
+  if (REXCVAR_GET(crackdown_show_render_resolution)) {
+    render_resolution = RenderResolution();
+  }
+  std::optional<double> frame_rate;
+  if (REXCVAR_GET(crackdown_show_fps)) {
+    frame_rate = g_shown_frame_rate;
+  }
+  const std::string title = ComposeWindowTitle(kWindowTitle, render_resolution, frame_rate);
+  if (title != g_shown_title) {
+    g_shown_title = title;
+    g_window->SetTitle(title);
+  }
+}
+
+void ShowFps(double fps) {
+  g_shown_frame_rate = fps;
+  UpdateTitle();
 }
 
 void CountGuestFrame() {
@@ -79,6 +111,7 @@ void AttachFrameRate(rex::ui::Window* window, rex::ui::WindowedAppContext& app_c
   g_window = window;
   g_app_context = &app_context;
   g_active.store(true, std::memory_order_relaxed);
+  app_context.CallInUIThread(UpdateTitle);
 }
 
 void DetachFrameRate() {
