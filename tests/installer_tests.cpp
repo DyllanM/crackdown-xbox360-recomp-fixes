@@ -1053,12 +1053,34 @@ bool HasLiteralEntry(const fs::path& dir, const std::string& name) {
   return false;
 }
 
+int CountEntriesNamedIgnoringCase(const fs::path& dir, const std::string& lower_name) {
+  int count = 0;
+  for (const auto& entry : fs::directory_iterator(dir)) {
+    count += Lower(entry.path().filename().string()) == lower_name ? 1 : 0;
+  }
+  return count;
+}
+
+bool FileSystemIsCaseSensitive(const fs::path& dir) {
+  const fs::path probe = dir / "case_probe";
+  std::ofstream(probe).put('x');
+  const bool sensitive = !fs::exists(dir / "CASE_PROBE");
+  fs::remove(probe);
+  return sensitive;
+}
+
 void TestExistingMixedCaseXexIsNormalized() {
   Section("an existing install with Default.xex is renamed to default.xex");
   Site site;
   WriteTree(site.game, GameTree(site.xex));
   CHECK(CheckGameFiles(site.game, site.descriptor).state == GameFiles::kReady);
-  CHECK(HasLiteralEntry(site.game, "default.xex") && !HasLiteralEntry(site.game, "Default.xex"));
+  CHECK(CheckGameFiles(site.game, site.descriptor).state == GameFiles::kReady);
+  CHECK(CountEntriesNamedIgnoringCase(site.game, "default.xex") == 1);
+  CHECK(ReadFile(site.game / "default.xex") == site.xex);
+  // A case-insensitive filesystem finds default.xex under any casing, so the rename is only needed elsewhere.
+  if (FileSystemIsCaseSensitive(site.game.parent_path())) {
+    CHECK(HasLiteralEntry(site.game, "default.xex") && !HasLiteralEntry(site.game, "Default.xex"));
+  }
 }
 
 void TestInstallFromImage() {

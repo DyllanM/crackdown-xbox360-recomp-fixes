@@ -1,0 +1,36 @@
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_threading.cpp b/src/kernel/xboxkrnl/xboxkrnl_threading.cpp
+index 57fd161..193168a 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_threading.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_threading.cpp
+@@ -1517,6 +1517,17 @@ REX_EXPORT_STUB(__imp__KeAlertResumeThread);
+ REX_EXPORT_STUB(__imp__KeAlertThread);
+ REX_EXPORT_STUB(__imp__KeBoostPriorityThread);
+ REX_EXPORT_STUB(__imp__KeCancelTimer);
++// Called every frame by the title; warn on the first call only.
++#define REX_EXPORT_STUB_ONCE(name)                                    \
++  extern "C" REX_FUNC(name) {                                         \
++    (void)base;                                                       \
++    static std::atomic_flag warned;                                   \
++    if (!warned.test_and_set()) {                                     \
++      REXKRNL_WARN("{} STUB (logged once)", #name);                   \
++    }                                                                 \
++  }                                                                   \
++  static rex::ppc::detail::PPCFuncRegistrar _ppc_reg_##name(#name, &name);
++
+ REX_EXPORT_STUB(__imp__KeConnectInterrupt);
+ REX_EXPORT_STUB(__imp__KeContextFromKframes);
+ REX_EXPORT_STUB(__imp__KeContextToKframes);
+@@ -1536,11 +1547,11 @@ REX_EXPORT_STUB(__imp__KeIpiGenericCall);
+ REX_EXPORT_STUB(__imp__KeQueryBackgroundProcessors);
+ REX_EXPORT_STUB(__imp__KeQueryInterruptTime);
+ REX_EXPORT_STUB(__imp__KeRegisterDriverNotification);
+-REX_EXPORT_STUB(__imp__KeRestoreFloatingPointState);
++REX_EXPORT_STUB_ONCE(__imp__KeRestoreFloatingPointState);
+ REX_EXPORT_STUB(__imp__KeRestoreVectorUnitState);
+ REX_EXPORT_STUB(__imp__KeRetireDpcList);
+ REX_EXPORT_STUB(__imp__KeRundownQueue);
+-REX_EXPORT_STUB(__imp__KeSaveFloatingPointState);
++REX_EXPORT_STUB_ONCE(__imp__KeSaveFloatingPointState);
+ REX_EXPORT_STUB(__imp__KeSaveVectorUnitState);
+ REX_EXPORT_STUB(__imp__KeSetBackgroundProcessors);
+ REX_EXPORT_STUB(__imp__KeSetPriorityClassThread);

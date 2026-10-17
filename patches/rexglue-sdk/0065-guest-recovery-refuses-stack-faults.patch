@@ -1,0 +1,113 @@
+diff --git a/include/rex/system/guest_page_recovery.h b/include/rex/system/guest_page_recovery.h
+index ffd3f8e..499fb1b 100644
+--- a/include/rex/system/guest_page_recovery.h
++++ b/include/rex/system/guest_page_recovery.h
+@@ -3,6 +3,8 @@
+ #include <array>
+ #include <cstdint>
+ 
++#include <rex/system/guest_fault_region.h>
++
+ namespace rex::memory {
+ 
+ enum class GuestAccessKind { kRead, kWrite, kExecute };
+@@ -11,6 +13,7 @@ enum class GuestPageRecoveryVerdict {
+   kRecover,
+   kNotEligible,
+   kAlreadyRecovered,
++  kSequential,
+   kLimitReached,
+ };
+ 
+@@ -20,10 +23,13 @@ class GuestPageRecovery {
+   static constexpr uint32_t kRangeEnd = 0x70FFFFFF;
+   static constexpr uint32_t kMaxPages = 8;
+ 
++  // Only unmapped pages away from the faulting thread's stack qualify; a stack overrun must crash.
+   GuestPageRecoveryVerdict Evaluate(GuestAccessKind access, uint32_t guest_address,
+-                                    uint32_t page_address, bool page_committed) const {
++                                    uint32_t page_address, uint32_t page_size,
++                                    GuestFaultRegion region, bool stack_known) const {
+     if (access != GuestAccessKind::kRead || guest_address < kRangeBegin ||
+-        guest_address > kRangeEnd || page_committed) {
++        guest_address > kRangeEnd || !stack_known ||
++        (region != GuestFaultRegion::kFree && region != GuestFaultRegion::kReserved)) {
+       return GuestPageRecoveryVerdict::kNotEligible;
+     }
+     for (uint32_t i = 0; i < count_; ++i) {
+@@ -31,6 +37,11 @@ class GuestPageRecovery {
+         return GuestPageRecoveryVerdict::kAlreadyRecovered;
+       }
+     }
++    for (uint32_t i = 0; i < count_; ++i) {
++      if (pages_[i] + page_size == page_address || page_address + page_size == pages_[i]) {
++        return GuestPageRecoveryVerdict::kSequential;
++      }
++    }
+     return count_ >= kMaxPages ? GuestPageRecoveryVerdict::kLimitReached
+                                : GuestPageRecoveryVerdict::kRecover;
+   }
+diff --git a/src/system/xmemory.cpp b/src/system/xmemory.cpp
+index b08a080..0745bed 100644
+--- a/src/system/xmemory.cpp
++++ b/src/system/xmemory.cpp
+@@ -581,7 +581,8 @@ bool DescribeGuestFault(Memory* memory, BaseHeap* heap, const ::PPCContext& ctx,
+   return true;
+ }
+ 
+-bool TryRecoverGuestReadPage(BaseHeap* heap, uint32_t guest_address, bool is_write) {
++bool TryRecoverGuestReadPage(Memory* memory, BaseHeap* heap, uint32_t guest_address,
++                             bool is_write) {
+   if (is_write || guest_address < GuestPageRecovery::kRangeBegin ||
+       guest_address > GuestPageRecovery::kRangeEnd ||
+       heap->heap_type() != memory::HeapType::kGuestVirtual) {
+@@ -591,19 +592,22 @@ bool TryRecoverGuestReadPage(BaseHeap* heap, uint32_t guest_address, bool is_wri
+   if (!thread_state) {
+     return false;
+   }
++  const ::PPCContext& ctx = *thread_state->context();
+   const uint32_t page_size = heap->page_size();
+-  const uint32_t page = guest_address & ~(page_size - 1);
+-  HeapAllocationInfo info{};
+-  const bool committed = !heap->QueryRegionInfo(page, &info) ||
+-                         (info.state & memory::kMemoryAllocationCommit) != 0;
+-  const auto verdict = g_guest_page_recovery.Evaluate(
+-      is_write ? GuestAccessKind::kWrite : GuestAccessKind::kRead, guest_address, page, committed);
++  GuestFaultDescription fault;
++  if (!DescribeGuestFault(memory, heap, ctx, guest_address, fault)) {
++    return false;
++  }
++  const uint32_t page = fault.page;
++  const HeapAllocationInfo& info = fault.info;
++  const auto verdict = g_guest_page_recovery.Evaluate(GuestAccessKind::kRead, guest_address, page,
++                                                      page_size, fault.region,
++                                                      fault.stack.known());
+   if (verdict == GuestPageRecoveryVerdict::kNotEligible) {
+     return false;
+   }
+ 
+   const uint32_t recovered = g_guest_page_recovery.count();
+-  const ::PPCContext& ctx = *thread_state->context();
+   REXSYS_WARN(
+       "[SAVE_RECOVERY] Guest read fault: addr=0x{:08X} page=0x{:08X} PC=unavailable "
+       "LR=0x{:08X} r3=0x{:08X} r4=0x{:08X} r5=0x{:08X} r6=0x{:08X} r7=0x{:08X} r8=0x{:08X} "
+@@ -617,6 +621,10 @@ bool TryRecoverGuestReadPage(BaseHeap* heap, uint32_t guest_address, bool is_wri
+       REXSYS_ERROR(
+           "[SAVE_RECOVERY] Recovery refused: page=0x{:08X} reason=already_recovered_but_faulted",
+           page);
++    } else if (verdict == GuestPageRecoveryVerdict::kSequential) {
++      REXSYS_ERROR(
++          "[SAVE_RECOVERY] Recovery refused: page=0x{:08X} reason=adjacent_to_recovered_page",
++          page);
+     } else {
+       REXSYS_ERROR("[SAVE_RECOVERY] Recovery refused: page=0x{:08X} reason=limit count={}/{}", page,
+                    recovered, GuestPageRecovery::kMaxPages);
+@@ -677,7 +685,7 @@ bool Memory::AccessViolationCallback(std::unique_lock<std::recursive_mutex> glob
+   uint32_t virtual_address = HostToGuestVirtual(host_address);
+   BaseHeap* heap = LookupHeap(virtual_address);
+   if (!heap || heap->heap_type() != memory::HeapType::kGuestPhysical) {
+-    if (heap && TryRecoverGuestReadPage(heap, virtual_address, is_write)) {
++    if (heap && TryRecoverGuestReadPage(this, heap, virtual_address, is_write)) {
+       return true;
+     }
+     REXSYS_ERROR(

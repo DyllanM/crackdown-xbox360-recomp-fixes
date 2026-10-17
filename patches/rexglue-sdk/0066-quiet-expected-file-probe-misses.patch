@@ -1,0 +1,84 @@
+diff --git a/src/filesystem/virtual_file_system.cpp b/src/filesystem/virtual_file_system.cpp
+index a1b4dad..aa302af 100644
+--- a/src/filesystem/virtual_file_system.cpp
++++ b/src/filesystem/virtual_file_system.cpp
+@@ -9,6 +9,7 @@
+  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
+  */
+ 
++#include <rex/filesystem/expected_miss.h>
+ #include <rex/filesystem/vfs.h>
+ #include <rex/logging.h>
+ #include <rex/string.h>
+@@ -120,10 +121,10 @@ Entry* VirtualFileSystem::ResolvePath(const std::string_view path) {
+     return rex::string::utf8_starts_with_case(normalized_path, d->mount_path());
+   });
+   if (it == devices_.cend()) {
+-    REXFS_WARN("VFS: '{}' -> [no device]", path);
++    REXFS_DEBUG("VFS: '{}' -> [no device]", path);
+     // Supress logging the error for ShaderDumpxe:\CompareBackEnds as this is
+     // not an actual problem nor something we care about.
+-    if (path != "ShaderDumpxe:\\CompareBackEnds") {
++    if (path != "ShaderDumpxe:\\CompareBackEnds" && !IsDeviceRelativeGuestPath(path)) {
+       REXFS_ERROR("ResolvePath({}) failed - device not found", path);
+     }
+     return nullptr;
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_io.cpp b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+index 3f1a852..5e0fe45 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_io.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_io.cpp
+@@ -13,6 +13,7 @@
+ #pragma GCC diagnostic ignored "-Wunused-parameter"
+ 
+ #include <rex/filesystem/device.h>
++#include <rex/filesystem/expected_miss.h>
+ #include <rex/kernel/xboxkrnl/private.h>
+ #include <rex/logging.h>
+ #include <rex/memory.h>
+@@ -168,7 +169,11 @@ u32 NtCreateFile_entry(mapped_u32 handle_out, u32 desired_access,
+   }
+ 
+   *handle_out = handle;
+-  if (XFAILED(result)) {
++  const bool opens_existing_only =
++      creation_disposition == static_cast<uint32_t>(rex::filesystem::FileDisposition::kOpen);
++  if (rex::filesystem::IsExpectedOpenMiss(opens_existing_only, desired_access, result)) {
++    REXKRNL_DEBUG("[NtCreateFile] not found: path='{}' -> {:#x}", target_path, result);
++  } else if (XFAILED(result)) {
+     REXKRNL_IMPORT_FAIL("NtCreateFile", "path='{}' -> {:#x}", target_path, result);
+   } else {
+     REXKRNL_IMPORT_RESULT("NtCreateFile", "{:#x} handle={:#x}", result, handle);
+diff --git a/include/rex/filesystem/expected_miss.h b/include/rex/filesystem/expected_miss.h
+new file mode 100644
+index 0000000..9e4640c
+--- /dev/null
++++ b/include/rex/filesystem/expected_miss.h
+@@ -0,0 +1,28 @@
++#pragma once
++
++#include <cstdint>
++#include <string_view>
++
++#include <rex/filesystem.h>
++#include <rex/system/xtypes.h>
++
++namespace rex::filesystem {
++
++// The kernel has no current directory, so a path without a device can never resolve.
++constexpr bool IsDeviceRelativeGuestPath(std::string_view path) {
++  if (!path.empty() && path.front() == '\\') {
++    return false;
++  }
++  return path.substr(0, path.find('\\')).find(':') == std::string_view::npos;
++}
++
++// A read-only open of an existing file that finds nothing is how titles probe for optional files.
++constexpr bool IsExpectedOpenMiss(bool opens_existing_only, uint32_t desired_access,
++                                  X_STATUS status) {
++  constexpr uint32_t kWriteAccess = FileAccess::kGenericWrite | FileAccess::kGenericAll |
++                                    FileAccess::kFileWriteData | FileAccess::kFileAppendData;
++  return opens_existing_only && !(desired_access & kWriteAccess) &&
++         (status == X_STATUS_NO_SUCH_FILE || status == X_STATUS_OBJECT_NAME_NOT_FOUND);
++}
++
++}  // namespace rex::filesystem

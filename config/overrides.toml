@@ -19,6 +19,13 @@ registers = []
 after_instruction = false
 return_on_true = true
 
+# Caps the Massive title-server count in sub_82AA0920 at its 10-record stack array before the loop reads it.
+[[midasm_hook]]
+address = 0x82AA0A6C
+name = "crackdown_massive_server_count_guard"
+registers = ["r1"]
+after_instruction = false
+
 # Sanitizes the mixed frame before XAudioSubmitRenderDriverFrame in sub_82A4BEF8; r4 is the frame address.
 [[midasm_hook]]
 address = 0x82A4BF40

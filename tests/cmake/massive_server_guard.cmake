@@ -1,0 +1,1 @@
+crackdown_add_test(massive_server_guard_tests SOURCES massive_server_guard_tests.cpp)

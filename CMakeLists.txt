@@ -72,6 +72,7 @@ set(CRACKDOWN_SOURCES
     src/launcher.cpp
     src/launcher_achievements.cpp
     src/launcher_achievements_page.cpp
+    src/massive_server_guard.cpp
     src/platform.cpp
     src/settings.cpp
     src/settings_file.cpp
