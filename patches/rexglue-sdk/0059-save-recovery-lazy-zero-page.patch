@@ -1,0 +1,153 @@
+diff --git a/src/system/xmemory.cpp b/src/system/xmemory.cpp
+index 4ee5275..2556c73 100644
+--- a/src/system/xmemory.cpp
++++ b/src/system/xmemory.cpp
+@@ -26,7 +26,9 @@
+ #include <rex/math.h>
+ #include <rex/stream.h>
+ #include <rex/system/function_dispatcher.h>
++#include <rex/system/guest_page_recovery.h>
+ #include <rex/system/mmio_handler.h>
++#include <rex/system/thread_state.h>
+ #include <rex/system/xmemory.h>
+ #include <rex/thread.h>
+ 
+@@ -531,6 +533,71 @@ runtime::MMIORange* Memory::LookupVirtualMappedRange(uint32_t virtual_address) {
+   return mmio_handler_->LookupRange(virtual_address);
+ }
+ 
++namespace {
++
++GuestPageRecovery g_guest_page_recovery;
++
++bool TryRecoverGuestReadPage(BaseHeap* heap, uint32_t guest_address, bool is_write) {
++  if (is_write || guest_address < GuestPageRecovery::kRangeBegin ||
++      guest_address > GuestPageRecovery::kRangeEnd ||
++      heap->heap_type() != memory::HeapType::kGuestVirtual) {
++    return false;
++  }
++  const auto* thread_state = runtime::ThreadState::Get();
++  if (!thread_state) {
++    return false;
++  }
++  const uint32_t page_size = heap->page_size();
++  const uint32_t page = guest_address & ~(page_size - 1);
++  HeapAllocationInfo info{};
++  const bool committed = !heap->QueryRegionInfo(page, &info) ||
++                         (info.state & memory::kMemoryAllocationCommit) != 0;
++  const auto verdict = g_guest_page_recovery.Evaluate(
++      is_write ? GuestAccessKind::kWrite : GuestAccessKind::kRead, guest_address, page, committed);
++  if (verdict == GuestPageRecoveryVerdict::kNotEligible) {
++    return false;
++  }
++
++  const uint32_t recovered = g_guest_page_recovery.count();
++  const ::PPCContext& ctx = *thread_state->context();
++  REXSYS_WARN(
++      "[SAVE_RECOVERY] Guest read fault: addr=0x{:08X} page=0x{:08X} PC=unavailable "
++      "LR=0x{:08X} r3=0x{:08X} r4=0x{:08X} r5=0x{:08X} r6=0x{:08X} r7=0x{:08X} r8=0x{:08X} "
++      "r9=0x{:08X} r10=0x{:08X} r11=0x{:08X} r12=0x{:08X} thread=0x{:X} recovery={}/{}",
++      guest_address, page, uint32_t(ctx.lr), ctx.r3.u32, ctx.r4.u32, ctx.r5.u32, ctx.r6.u32,
++      ctx.r7.u32, ctx.r8.u32, ctx.r9.u32, ctx.r10.u32, ctx.r11.u32, ctx.r12.u32,
++      thread_state->thread_id(), recovered, GuestPageRecovery::kMaxPages);
++
++  if (verdict != GuestPageRecoveryVerdict::kRecover) {
++    if (verdict == GuestPageRecoveryVerdict::kAlreadyRecovered) {
++      REXSYS_ERROR(
++          "[SAVE_RECOVERY] Recovery refused: page=0x{:08X} reason=already_recovered_but_faulted",
++          page);
++    } else {
++      REXSYS_ERROR("[SAVE_RECOVERY] Recovery refused: page=0x{:08X} reason=limit count={}/{}", page,
++                   recovered, GuestPageRecovery::kMaxPages);
++    }
++    return false;
++  }
++
++  const bool reserved = (info.state & memory::kMemoryAllocationReserve) != 0;
++  const uint32_t allocation_type =
++      reserved ? memory::kMemoryAllocationCommit
++               : (memory::kMemoryAllocationReserve | memory::kMemoryAllocationCommit);
++  if (!heap->AllocFixed(page, page_size, page_size, allocation_type,
++                        memory::kMemoryProtectRead | memory::kMemoryProtectWrite)) {
++    REXSYS_ERROR("[SAVE_RECOVERY] Recovery failed: page=0x{:08X} reason=map_failed", page);
++    return false;
++  }
++  std::memset(heap->TranslateRelative(page - heap->heap_base()), 0, page_size);
++  g_guest_page_recovery.Record(page);
++  REXSYS_WARN("[SAVE_RECOVERY] Mapped zero page 0x{:08X} recovery={}/{}", page,
++              g_guest_page_recovery.count(), GuestPageRecovery::kMaxPages);
++  return true;
++}
++
++}  // namespace
++
+ bool Memory::AccessViolationCallback(std::unique_lock<std::recursive_mutex> global_lock_locked_once,
+                                      void* host_address, bool is_write) {
+   // Access via physical_membase_ is special, when need to bypass everything
+@@ -543,6 +610,9 @@ bool Memory::AccessViolationCallback(std::unique_lock<std::recursive_mutex> glob
+   uint32_t virtual_address = HostToGuestVirtual(host_address);
+   BaseHeap* heap = LookupHeap(virtual_address);
+   if (!heap || heap->heap_type() != memory::HeapType::kGuestPhysical) {
++    if (heap && TryRecoverGuestReadPage(heap, virtual_address, is_write)) {
++      return true;
++    }
+     REXSYS_ERROR(
+         "Unhandled guest access violation: {} of guest 0x{:08X} (host 0x{:016X}) on thread 0x{:X}",
+         is_write ? "write" : "read", virtual_address, reinterpret_cast<uintptr_t>(host_address),
+diff --git a/include/rex/system/guest_page_recovery.h b/include/rex/system/guest_page_recovery.h
+new file mode 100644
+index 0000000..ffd3f8e
+--- /dev/null
++++ b/include/rex/system/guest_page_recovery.h
+@@ -0,0 +1,51 @@
++#pragma once
++
++#include <array>
++#include <cstdint>
++
++namespace rex::memory {
++
++enum class GuestAccessKind { kRead, kWrite, kExecute };
++
++enum class GuestPageRecoveryVerdict {
++  kRecover,
++  kNotEligible,
++  kAlreadyRecovered,
++  kLimitReached,
++};
++
++class GuestPageRecovery {
++ public:
++  static constexpr uint32_t kRangeBegin = 0x70000000;
++  static constexpr uint32_t kRangeEnd = 0x70FFFFFF;
++  static constexpr uint32_t kMaxPages = 8;
++
++  GuestPageRecoveryVerdict Evaluate(GuestAccessKind access, uint32_t guest_address,
++                                    uint32_t page_address, bool page_committed) const {
++    if (access != GuestAccessKind::kRead || guest_address < kRangeBegin ||
++        guest_address > kRangeEnd || page_committed) {
++      return GuestPageRecoveryVerdict::kNotEligible;
++    }
++    for (uint32_t i = 0; i < count_; ++i) {
++      if (pages_[i] == page_address) {
++        return GuestPageRecoveryVerdict::kAlreadyRecovered;
++      }
++    }
++    return count_ >= kMaxPages ? GuestPageRecoveryVerdict::kLimitReached
++                               : GuestPageRecoveryVerdict::kRecover;
++  }
++
++  void Record(uint32_t page_address) {
++    if (count_ < kMaxPages) {
++      pages_[count_++] = page_address;
++    }
++  }
++
++  uint32_t count() const { return count_; }
++
++ private:
++  std::array<uint32_t, kMaxPages> pages_{};
++  uint32_t count_ = 0;
++};
++
++}  // namespace rex::memory
