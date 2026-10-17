@@ -9,7 +9,7 @@ inline constexpr char kLanguageSetting[] = "crackdown_language";
 inline constexpr char kDefaultLanguage[] = "en-US";
 inline constexpr char kLanguageLabel[] = "Language";
 inline constexpr char kLanguageHelp[] =
-    "The language of the game's text and spoken dialogue. Applied when the game starts.";
+    "The language of the game's text, from the localized files in your game data. Applied when the game starts.";
 
 // title_index is the position of the locale in the title's own locale table, which names the Local folder.
 struct GameLanguage {
@@ -18,7 +18,6 @@ struct GameLanguage {
   uint32_t title_index;
 };
 
-// Locales whose text and voice banks are both on the disc.
 inline constexpr GameLanguage kGameLanguages[] = {
     {"en-US", "English", 0},
     {"fr-FR", "French", 1},

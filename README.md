@@ -2,30 +2,45 @@
 
 # Crackdown - PC Port
 
-### Crackdown for Xbox 360, running natively on Windows and Linux (including Steam Deck) through static recompilation, with the TRG launcher and modern PC options
+### Crackdown for Xbox 360, running natively on Windows, and experimentally on Linux and Steam Deck, through static recompilation, with the TRG launcher and modern PC options
 
 [![Latest release](https://img.shields.io/github/v/release/saulob/crackdown-xbox360-recompiled?style=for-the-badge&label=release&color=40a6f2&labelColor=07101f)](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/saulob/crackdown-xbox360-recompiled/total?style=for-the-badge&color=1565c0&labelColor=07101f)](https://github.com/saulob/crackdown-xbox360-recompiled/releases)
-![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20Steam%20Deck-00acc1?style=for-the-badge&labelColor=07101f)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20experimental%20%7C%20Steam%20Deck%20experimental-00acc1?style=for-the-badge&labelColor=07101f)
 
 <sub>The original Xbox 360 game code, statically recompiled to native PC code with the <a href="https://github.com/rexglue/rexglue-sdk">ReXGlue SDK</a>. <b>No game files included</b>: bring your own Crackdown disc.</sub>
 
 </div>
 
+Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, with enhanced graphics, high frame rates, modern display support, a full launcher, offline achievements, language selection, and native Windows support plus experimental Linux / Steam Deck support.
+
 ## Features
 
-- **Native static recompilation**: the game's own code, not an emulator. A native Windows build (Direct3D 12) and a native Linux build (Vulkan), shipped as an AppImage that also serves the Steam Deck.
-- **Frame rate**: 30 (Original), 60 (Recommended, the default), 90, 120, 144, 165, 240 or Unlimited. Game speed stays the same at every rate.
-- **Native Aspect Ratio**: 16:9 Original, 16:10, 21:9 Ultrawide, 32:9 Super Ultrawide, 4:3 and 5:4. The game renders in the chosen format instead of stretching a 16:9 picture, so wider formats show more of the scene to the sides. Menus and videos made for 16:9 are not redesigned for every format.
+### Graphics & Display
+- **Render Resolution up to 4x**: 1x (Original, 1280x720 at 16:9), 2x, 3x or 4x, including 4K-class output depending on the selected aspect ratio and display setup.
+- **Internal Render Resolution**: 100% Native, 75% Performance or 50% Low-end. The GPU draws the game at that share of the Render Resolution and the picture is scaled up to it, for more speed on slower GPUs.
+- **Native Aspect Ratio**: 16:9 Original, 16:10, **21:9 Ultrawide**, **32:9 Super Ultrawide**, 4:3 and 5:4. The game renders in the chosen format, so wider formats show more of the scene to the sides. Menus and videos made for 16:9 are not redesigned for every format.
 - **Presentation**: Letterbox keeps the picture's proportions in a window of another shape; Stretch fills the window.
-- **Render resolution and Internal render resolution**: Render resolution (1x to 4x) sets the target resolution of the picture. Internal render resolution (100% Native, 75% Performance, 50% Low-end) lowers the resolution the GPU draws at before the picture is scaled up to it, trading sharpness for performance on slower GPUs. Both are separate from the Window size, which only sets the host window.
-- **Graphics card selection** (Windows): Automatic (recommended) or a specific compatible GPU. On Linux the runtime prefers the dedicated GPU, and a variable such as `DRI_PRIME` still takes precedence.
-- **TRG launcher** with a game installer that reads your disc image or a folder of its files, display and graphics options, and an optional **Skip intro** that starts at the title screen.
-- **Window handling**: Windowed or Borderless Fullscreen, **F11** to switch while playing, monitor selection, and window sizes that follow the chosen aspect ratio. The launcher remembers its own position and size. The mouse cursor hides after inactivity in focused fullscreen.
-- **FPS display**: the frame rate and the render resolution can be shown in the window title, and a frame counter in the corner shows the frame rate and frame time (toggled with **F2**).
-- **Controllers and keyboard**: Xbox controllers work without setup, and an optional keyboard mode plays as an Xbox 360 controller.
-- **Portable user data**: saves, settings and caches are in a `user_data` folder beside the program.
-- **Compatibility fixes** for the recompiled game's graphics and audio, and performance work that cuts CPU waiting on the GPU on both platforms.
+- **Windowed or Borderless Fullscreen**, with **F11** to switch while playing, and monitor selection.
+- **Graphics card selection** (Windows): Automatic (recommended) or a specific compatible GPU.
+
+### Performance
+- **Frame rates**: 30 (Original), 60 (Recommended, the default), 90, 120, 144, 165, 240 and **Unlimited**. Game speed stays the same at every rate.
+- **Improved frame pacing**, and runtime and performance optimizations on both platforms that cut CPU waiting on the GPU.
+- **Compatibility fixes** for the recompiled game's graphics and audio.
+
+### Quality of Life
+- **Offline achievements** with the original icons and Gamerscore. Press **F7** to open the list.
+- **Language selector** with ten launcher choices: English, French, German, Italian, Spanish (Spain), Spanish (Latin America), Czech, Polish, Hungarian and Japanese.
+- **Skip intro**: starts directly at the title screen.
+- **Frame rate and render resolution in the window title**, and an **FPS counter** in the corner (toggled with **F2**).
+- **Full launcher** with an installer for your disc image or extracted files, and display, graphics and gameplay options.
+- Xbox controllers work without setup, and an optional keyboard mode is available.
+- Portable `user_data` folder for saves, settings and caches.
+
+### Platforms
+- **Windows** (primary): native build using Direct3D 12.
+- **Linux x86_64 and Steam Deck** (**Experimental**): native build using Vulkan, shipped as an AppImage. Not Proton or Wine.
 
 ## What you need
 
@@ -58,13 +73,24 @@ Windows may warn the first time you run the program, because the release is not 
 
 ### Linux and Steam Deck
 
+**Experimental.** Crackdown Recompiled includes a native Linux x86_64 build using ReXGlue's Vulkan backend. It does not use Proton or Wine, and the AppImage contains the same platform-neutral game and launcher features as the Windows build. It is built and checked by automated scripts and tests, but this release has not yet been fully validated on real Linux PCs or Steam Deck hardware. Reports are welcome.
+
 1. Download **CrackdownRecompiled-v0.1.0-x86_64.AppImage** from the release and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
 2. Run it, then install your disc image from the **Play** page as on Windows. The game files go in a `game` folder next to the AppImage.
 3. On a Steam Deck, do this in **Desktop Mode**, then add the AppImage with **Games > Add a Non-Steam Game to My Library** and play it from **Game Mode**.
 
-The Linux build has the same features as Windows apart from the Graphics card selection. Settings and saves are in `user_data`, and logs in `logs`, both next to the AppImage. Requirements, the AppImage's startup behavior and building it are in [docs/linux.md](docs/linux.md).
+If the system cannot mount AppImages with FUSE, the AppImage unpacks itself into a temporary folder and runs from there. Everything is shared with Windows except **Graphics card selection**, which chooses a Direct3D 12 adapter and so exists on Windows only. Settings and saves are in `user_data`, and logs in `logs`, both next to the AppImage. Requirements, the startup behavior and building the AppImage are in [docs/linux.md](docs/linux.md).
 
 **No game files are included** in either download.
+
+## Hotkeys
+
+| Key | Action |
+| --- | --- |
+| **F11** | Switch between Windowed and Borderless Fullscreen while playing |
+| **F7** | Open the achievements list |
+| **F2** | Show or hide the FPS counter |
+| **Shift** (held while starting) | Bring the launcher back |
 
 ## The launcher
 
@@ -77,7 +103,7 @@ The launcher opens before the game. Your choices are saved to `settings.toml` in
 ### Display
 - **Display mode**: Windowed or Borderless Fullscreen. Press **F11** while playing to switch between them.
 - **Window size** and **Monitor**. The launcher reopens at its last position and size, maximized or in its own F11 fullscreen if it was. This is separate from the game's Display mode.
-- **Aspect Ratio**: 16:9 Original, 16:10, 21:9 Ultrawide, 32:9 Super Ultrawide, 4:3 or 5:4. It sets the game's target rendering format, and the Window size choices follow it
+- **Aspect Ratio**: 16:9 Original, 16:10, 21:9 Ultrawide, 32:9 Super Ultrawide, 4:3 or 5:4. It sets the game's target rendering format, and the Window size choices follow it.
 - **VSync** on or off
 - **Presentation**: Letterbox or Stretch
 
@@ -92,8 +118,8 @@ Window size, monitor, VSync and graphics card take effect when you press **PLAY*
 - **Texture filtering**: Game, Off, 2x, 4x, 8x or 16x
 
 ### Gameplay
+- **Language**: the game's text and interface language. Choose English (the default), French, German, Italian, Spanish (Spain), Spanish (Latin America), Czech, Polish, Hungarian or Japanese. The available resources come from your own game files, and the language is applied when the game starts.
 - **Skip intro**: starts directly at the title screen, without the startup videos. Off by default.
-- **Language**: the game's own text and spoken dialogue: English (the default), French, German, Italian, Spanish (Spain), Spanish (Latin America), Czech, Polish, Hungarian or Japanese. Uses the localized files already in your game data; applied when the game starts.
 - **Frame rate**: 30 (Original), 60 (Recommended), 90, 120, 144, 165, 240 or Unlimited
 - **Frame rate in title**: shows the frame rate in the window title, for example `Crackdown Recompiled | FPS: 60.00`. On by default.
 - **Render resolution in title**: shows the render resolution in the window title, for example `Crackdown Recompiled | 2560x1440 | FPS: 60.00`. Off by default.
@@ -108,6 +134,12 @@ Window size, monitor, VSync and graphics card take effect when you press **PLAY*
 - The port version, game version and library versions
 - Open the game folder, or the saves and settings folder
 - **Show settings file**, and **Reset all settings**
+
+## Offline achievements
+
+Crackdown includes offline achievement tracking with the original achievement icons and Gamerscore. Press **F7** while the game is running to open the achievement list, which shows each achievement's icon, description, Gamerscore, unlock status and progress. Unlock progress is saved automatically on this PC.
+
+Everything stays offline: there is no Xbox Live connection, Microsoft sign-in or online achievement synchronization.
 
 ## Known issues
 
@@ -141,7 +173,7 @@ The Linux AppImage is built on Linux or WSL with `tools/package-linux.sh`, after
 - Crackdown by Realtime Worlds, published by Microsoft Game Studios (2007). This is an unofficial fan-made PC port. It is not affiliated with or endorsed by Microsoft or Realtime Worlds, and it contains none of their files.
 - [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk) for the recompiler and runtime (BSD 3-Clause)
 - [TRG Launcher](https://github.com/TekRantGaming/trg-launcher), the launcher interface, pinned at v1.1.0. The referenced revision contains no explicit license file.
-- The licenses of the libraries the release includes are in the `licenses` folder of the ZIP and in `usr/share/doc/crackdown` inside the AppImage
+- The licenses of the libraries the release includes are in the `licenses` folder of the ZIP and in the AppImage
 
 ## AI disclosure
 

@@ -4,8 +4,8 @@ The Linux build is a native x86_64 program, not a Windows build under Proton or 
 launcher as the Windows build: ReXGlue SDK 0.10.0's Linux runtime and the Xenos GPU plugin's Vulkan backend, both built
 with the project's patches. It ships as one AppImage, which is also the Steam Deck build.
 
-Linux support is new in v0.1.0. The AppImage is built and checked by the project's scripts and the automated tests pass on
-Linux, but it has had little testing on real Linux PCs and none on a Steam Deck yet. Reports are welcome.
+**Experimental.** The AppImage is built and checked by the project's scripts and the automated tests pass on Linux, but
+this release has not yet been fully validated on real Linux PCs or Steam Deck hardware. Reports are welcome.
 
 Every setting of the launcher works on Linux, apart from **Graphics card**: that list selects a Direct3D 12 adapter, so it
 exists on Windows only. On Linux the runtime prefers the dedicated GPU, and the usual selection variables (`DRI_PRIME`,
