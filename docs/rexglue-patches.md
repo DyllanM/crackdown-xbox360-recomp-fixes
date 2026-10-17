@@ -6,8 +6,8 @@ must not move virtual functions or data members of classes the generated game co
 
 `NNNN-name.patch` applies on both platforms, `NNNN-name.windows.patch` only on Windows and `NNNN-name.linux.patch` only on
 Linux. Numbers are unique and patches apply in name order; gaps are fine. 39 patches are common, 12 are Windows only and
-12 are Linux only, so 51 apply on each platform. Patches 0005 and 0052 change the code generator and are the reason
-`tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
+13 are Linux only, so 51 apply on Windows and 52 on Linux. Patches 0005 and 0052 change the code generator and are the
+reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
 
 | # | Platform | Purpose |
 |---|----------|---------|
@@ -64,6 +64,7 @@ Linux. Numbers are unique and patches apply in name order; gaps are fine. 39 pat
 | 0064 | all | the "has \"invalid\" type" texture fetch warning is logged once per distinct fetch constant, up to 16, then one overflow notice; handling is unchanged |
 | 0065 | all | 0059 recovers only free or reserved pages away from the faulting thread's stack and its guard pages, never a page adjacent to one it already recovered, and nothing when the stack is unknown |
 | 0066 | all | a read-only open that finds nothing (`NO_SUCH_FILE`, `OBJECT_NAME_NOT_FOUND`) and a path without a device (the kernel has no current directory) log at debug instead of warning/error; other `NtCreateFile` failures and unknown devices still warn |
+| 0067 | linux | when SDL video cannot start, stderr also gets the SDL error and the graphical-session hint (DISPLAY for X11, WAYLAND_DISPLAY for Wayland) before the normal failure exit |
 
 Patches 0054 to 0058 are adapted from Unowa001/crackdown-recomp (BSD 3-Clause, notice in
 [THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).
