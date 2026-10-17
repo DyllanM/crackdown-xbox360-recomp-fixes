@@ -12,6 +12,9 @@
 
 </div>
 
+<img width="2133" height="1147" alt="2026-10-16_23-35" src="https://github.com/user-attachments/assets/b5b7f3d7-1a8d-419c-8339-43b244cda1e2" />
+
+
 Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, with enhanced graphics, high frame rates, modern display support, a full launcher, offline achievements, language selection, and native Windows support plus experimental Linux / Steam Deck support.
 
 ## Features
@@ -144,6 +147,12 @@ Everything stays offline: there is no Xbox Live connection, Microsoft sign-in or
 ## Known issues
 
 - Background music may occasionally stop during gameplay while sound effects and voices continue.
+
+## Screenshots
+
+<img width="2553" height="1426" alt="image" src="https://github.com/user-attachments/assets/d14c97f8-2f76-40b6-aafe-295d382e9dd0" />
+
+<img width="2556" height="1435" alt="2026-10-16_23-37" src="https://github.com/user-attachments/assets/805eedd7-7dde-4a63-b18d-341102f939b1" />
 
 ## Reporting problems
 
