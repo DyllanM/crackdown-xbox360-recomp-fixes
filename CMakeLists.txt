@@ -50,6 +50,8 @@ get_directory_property(CRACKDOWN_TRG_VERSION DIRECTORY "${_trg_dir}" DEFINITION 
 
 set(CRACKDOWN_SOURCES
     src/main.cpp
+    src/achievements_input.cpp
+    src/achievements_overlay.cpp
     src/aspect_render.cpp
     src/audio_mixer_priority.cpp
     src/audio_pcm_firewall.cpp
@@ -63,6 +65,8 @@ set(CRACKDOWN_SOURCES
     src/gpu_fence_wait.cpp
     src/graphics_adapters.cpp
     src/launcher.cpp
+    src/launcher_achievements.cpp
+    src/launcher_achievements_page.cpp
     src/platform.cpp
     src/settings.cpp
     src/settings_file.cpp

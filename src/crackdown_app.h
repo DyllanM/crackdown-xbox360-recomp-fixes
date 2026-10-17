@@ -16,6 +16,8 @@
 #include <rex/ui/ui_event.h>
 #include <rex/ui/windowed_app_context.h>
 
+#include "achievements_input.h"
+#include "achievements_overlay.h"
 #include "aspect_ratio.h"
 #include "cache_device.h"
 #include "frame_counter.h"
@@ -114,36 +116,51 @@ class CrackdownApp : public rex::ReXApp {
       game_settings_.Apply();
       return defaults;
     }
+    if (crackdown::CheckGameFiles(game_data_root()).state == crackdown::GameFiles::kReady) {
+      show_launcher_after_runtime_ = true;
+      crackdown::ApplyAspectRatio();
+      crackdown::ApplyInternalRenderPath();
+      crackdown::ApplyMultisampling();
+      return defaults;
+    }
     REXLOG_INFO("Launcher shown");
-    crackdown::LauncherCallbacks callbacks;
-    callbacks.play = [this, resume, defaults] {
-      app_context().CallInUIThreadDeferred([this, resume, defaults] {
-        game_settings_.Apply();
-        game_settings_.ApplyDisplayMode();
-        resume(defaults);
-      });
-    };
-    callbacks.window_changed = [this] { return game_settings_.WindowChanged(); };
-    callbacks.restart = [this] {
-      if (!crackdown::RelaunchSelf(L"--crackdown_skip_launcher=true")) {
-        return false;
-      }
-      app_context().CallInUIThreadDeferred([this] { app_context().QuitFromUIThread(); });
-      return true;
-    };
-    callbacks.quit = [this] { app_context().CallInUIThreadDeferred([this] { app_context().QuitFromUIThread(); }); };
-    callbacks.window_handle = [this] { return window() ? window()->GetNativeWindowHandle() : nullptr; };
-    callbacks.window_fullscreen = [this] { return window() && window()->IsFullscreen(); };
-    callbacks.set_window_fullscreen = [this](bool fullscreen) {
-      if (window()) {
-        window()->SetFullscreen(fullscreen);
-      }
-    };
+    launcher_open_ = true;
     crackdown::ShowLauncher(imgui_drawer(),
                             {defaults.game_data_root, defaults.user_data_root,
                              crackdown::PlayerSettingsPath(defaults.user_data_root), user_data_.outcome},
-                            game_settings_, std::move(callbacks));
+                            game_settings_, {}, MakeLauncherCallbacks([this, resume, defaults] { resume(defaults); }));
     return std::nullopt;
+  }
+
+  // With game files installed, the launcher opens after the runtime to read its achievement manager.
+  void LaunchModule() override {
+    if (!show_launcher_after_runtime_) {
+      ReXApp::LaunchModule();
+      return;
+    }
+    show_launcher_after_runtime_ = false;
+    REXLOG_INFO("Launcher shown after the runtime");
+    launcher_open_ = true;
+    crackdown::LauncherCallbacks callbacks = MakeLauncherCallbacks([this] { ReXApp::LaunchModule(); });
+    // Settings the runtime reads at startup take effect only in a new process.
+    callbacks.window_changed = [this] { return game_settings_.WindowChanged() || game_settings_.RuntimeChanged(); };
+    crackdown::ShowLauncher(imgui_drawer(),
+                            {game_data_root(), user_data_root(), crackdown::PlayerSettingsPath(user_data_root()),
+                             user_data_.outcome},
+                            game_settings_, {runtime(), immediate_drawer(), &achievements()}, std::move(callbacks));
+  }
+
+  // F7 toggles the overlay owned here; ReXApp's own list has no B, X or controller handling.
+  std::unique_ptr<rex::ui::ImGuiDialog> CreateAchievementsOverlay() override {
+    if (launcher_open_) {
+      return nullptr;
+    }
+    if (achievements_) {
+      CloseAchievements();
+    } else {
+      OpenAchievements();
+    }
+    return nullptr;
   }
 
   void OnPostSetup() override {
@@ -166,6 +183,9 @@ class CrackdownApp : public rex::ReXApp {
     if (imgui_drawer()) {
       crackdown::CreateFrameCounter(imgui_drawer());
     }
+    game_settings_.MarkRuntimeBuilt();
+    crackdown::SetAchievementsCloseRequest(
+        [this] { app_context().CallInUIThreadDeferred([this] { CloseAchievements(); }); });
     InstallSkipIntro();
   }
 
@@ -176,11 +196,65 @@ class CrackdownApp : public rex::ReXApp {
     if (auto* input = runtime() ? runtime()->input_system() : nullptr) {
       input->Shutdown();
     }
+    CloseAchievements();
     DetachWindowHost();
     crackdown::DetachFrameRate();
   }
 
  private:
+  crackdown::LauncherCallbacks MakeLauncherCallbacks(std::function<void()> start) {
+    crackdown::LauncherCallbacks callbacks;
+    callbacks.play = [this, start] {
+      launcher_open_ = false;
+      app_context().CallInUIThreadDeferred([this, start] {
+        game_settings_.Apply();
+        game_settings_.ApplyDisplayMode();
+        start();
+      });
+    };
+    callbacks.window_changed = [this] { return game_settings_.WindowChanged(); };
+    callbacks.restart = [this] {
+      if (!crackdown::RelaunchSelf(L"--crackdown_skip_launcher=true")) {
+        return false;
+      }
+      app_context().CallInUIThreadDeferred([this] { app_context().QuitFromUIThread(); });
+      return true;
+    };
+    callbacks.quit = [this] {
+      launcher_open_ = false;
+      app_context().CallInUIThreadDeferred([this] { app_context().QuitFromUIThread(); });
+    };
+    callbacks.window_handle = [this] { return window() ? window()->GetNativeWindowHandle() : nullptr; };
+    callbacks.window_fullscreen = [this] { return window() && window()->IsFullscreen(); };
+    callbacks.set_window_fullscreen = [this](bool fullscreen) {
+      if (window()) {
+        window()->SetFullscreen(fullscreen);
+      }
+    };
+    return callbacks;
+  }
+
+  void OpenAchievements() {
+    if (achievements_ || !runtime() || !runtime()->kernel_state() || !imgui_drawer() || !immediate_drawer()) {
+      return;
+    }
+    achievements_ = std::make_unique<crackdown::AchievementsOverlay>(
+        imgui_drawer(), immediate_drawer(), runtime(), &achievements(),
+        crackdown::AchievementsOverlay::Controls{
+            .request_close = [this] { app_context().CallInUIThreadDeferred([this] { CloseAchievements(); }); },
+            .scroll_axis = [] { return crackdown::AchievementsScrollAxis(); },
+        });
+    crackdown::SetAchievementsModal(true);
+  }
+
+  void CloseAchievements() {
+    if (!achievements_) {
+      return;
+    }
+    achievements_.reset();
+    crackdown::SetAchievementsModal(false);
+  }
+
   crackdown::GraphicsFallbackInfo DescribeGameFiles() const {
     const std::string folder = crackdown::Utf8(game_data_root());
     switch (crackdown::CheckGameFiles(game_data_root()).state) {
@@ -222,5 +296,8 @@ class CrackdownApp : public rex::ReXApp {
   crackdown::GameSettings game_settings_;
   std::filesystem::path shipped_config_;
   crackdown::UserDataSelection user_data_;
+  std::unique_ptr<crackdown::AchievementsOverlay> achievements_;
   bool show_launcher_ = false;
+  bool show_launcher_after_runtime_ = false;
+  bool launcher_open_ = false;
 };

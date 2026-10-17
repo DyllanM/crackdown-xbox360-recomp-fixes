@@ -1,0 +1,3 @@
+crackdown_add_test(launcher_achievements_tests SOURCES launcher_achievements_tests.cpp ../src/launcher_achievements.cpp SDK_HEADERS)
+crackdown_add_test(launcher_pages_tests SOURCES launcher_pages_tests.cpp)
+crackdown_add_test(achievements_overlay_rules_tests SOURCES achievements_overlay_rules_tests.cpp)

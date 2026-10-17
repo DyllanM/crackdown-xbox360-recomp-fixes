@@ -104,6 +104,10 @@ class GameSettings final : public trg::SettingsStore {
   void MarkWindowCreated();
   // Whether the pending window size, monitor, VSync or graphics card needs a new process.
   bool WindowChanged() const;
+  // Records the pending settings the runtime is built with.
+  void MarkRuntimeBuilt();
+  // Whether a pending game setting differs from the one the runtime was built with.
+  bool RuntimeChanged() const;
 
  private:
   std::filesystem::path player_file_;
@@ -111,6 +115,7 @@ class GameSettings final : public trg::SettingsStore {
   std::map<std::string, std::string> saved_;
   std::map<std::string, std::string> pending_;
   std::map<std::string, std::string> window_created_;
+  std::map<std::string, std::string> runtime_built_;
   std::set<std::string> unregistered_;
 };
 

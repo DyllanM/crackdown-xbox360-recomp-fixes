@@ -425,4 +425,19 @@ bool GameSettings::WindowChanged() const {
   return false;
 }
 
+void GameSettings::MarkRuntimeBuilt() { runtime_built_ = pending_; }
+
+bool GameSettings::RuntimeChanged() const {
+  const auto value_of = [](const std::map<std::string, std::string>& values, const std::string& key) {
+    const auto found = values.find(key);
+    return found == values.end() ? std::string() : found->second;
+  };
+  for (const std::string& key : kGameSettingKeys) {
+    if (key != kFullscreenKey && value_of(pending_, key) != value_of(runtime_built_, key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace crackdown

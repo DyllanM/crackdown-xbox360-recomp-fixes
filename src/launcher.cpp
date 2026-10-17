@@ -14,7 +14,9 @@
 
 #include <rex/cvar.h>
 #include <rex/logging.h>
+#include <rex/system/achievement_manager.h>
 #include <rex/ui/imgui_dialog.h>
+#include <rex/ui/overlay/achievement_icon_cache.h>
 #include <rex/version.h>
 
 #include "trg/headers.h"
@@ -27,6 +29,9 @@
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
 #include "language_setting.h"
+#include "launcher_achievements.h"
+#include "launcher_achievements_page.h"
+#include "launcher_pages.h"
 #include "platform.h"
 #include "presentation_setting.h"
 #include "settings.h"
@@ -111,21 +116,37 @@ std::string KeyList(std::string keys) {
   return keys;
 }
 
+std::vector<AchievementEntry> LoadAchievementEntries(const rex::system::AchievementManager& manager) {
+  std::vector<AchievementEntry> entries;
+  for (rex::system::AchievementInfo& info : manager.ListAchievements()) {
+    const bool unlocked = manager.IsUnlocked(info.id);
+    entries.push_back({std::move(info), unlocked});
+  }
+  return entries;
+}
+
 class LauncherDialog;
 LauncherDialog* g_dialog = nullptr;
 
 class LauncherDialog final : public rex::ui::ImGuiDialog {
  public:
-  LauncherDialog(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings,
+  LauncherDialog(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings, LauncherGameContext game,
                  LauncherCallbacks callbacks)
       : ImGuiDialog(drawer),
         paths_(std::move(paths)),
         cb_(std::move(callbacks)),
         settings_(settings),
+        game_(game),
         game_files_(CheckAndLogGameFiles(paths_.game_dir).state),
         monitors_(ListMonitors()),
         graphics_adapters_(ListGraphicsAdapters()) {
     g_dialog = this;
+    if (game_.achievements) {
+      entries_ = LoadAchievementEntries(*game_.achievements);
+    }
+    if (game_.runtime && game_.immediate_drawer) {
+      icons_ = std::make_unique<rex::ui::AchievementIconCache>(game_.immediate_drawer, game_.runtime);
+    }
     if (SelectedAspectRatio() != AspectRatio::k16x9) {
       SelectWindowSizeForAspect();
     }
@@ -364,18 +385,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     c.fonts = g_fonts;
     c.branding.title = "CRACKDOWN";
     c.branding.background = LauncherHeader();
-    c.pages = {
-        {"Play", "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
-         [this] { return game_files_ != GameFiles::kReady; }},
-        {"Display", "Window, monitor and how the picture fits your screen.",
-         [this](trg::Ui& ui) { PageDisplay(ui); }},
-        {"Graphics", "Graphics card, render resolution, anti-aliasing and texture filtering.",
-         [this](trg::Ui& ui) { PageGraphics(ui); }},
-        {"Gameplay", "Frame rate, and what the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
-        {"Controls", "Controller, keyboard and mouse.", [](trg::Ui& ui) { PageControls(ui); }},
-        {"About", "About this port, and where your files and settings live.",
-         [this](trg::Ui& ui) { PageAbout(ui); }},
-    };
+    for (const LauncherPage page : kLauncherPageOrder) {
+      c.pages.push_back(PageFor(page));
+    }
     c.can_play = [this] {
       if (install_.running()) {
         return trg::PlayCheck{false, "Wait for the install to finish.", 0};
@@ -387,6 +399,44 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     };
     c.on_file_drop = [this](const std::string& path) { FileDropped(PathFromUtf8(path)); };
     return c;
+  }
+
+  trg::Page PageFor(LauncherPage page) {
+    switch (page) {
+      case LauncherPage::kPlay:
+        return {"Play", "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
+                [this] { return game_files_ != GameFiles::kReady; }};
+      case LauncherPage::kDisplay:
+        return {"Display", "Window, monitor and how the picture fits your screen.",
+                [this](trg::Ui& ui) { PageDisplay(ui); }, nullptr};
+      case LauncherPage::kGraphics:
+        return {"Graphics", "Graphics card, render resolution, anti-aliasing and texture filtering.",
+                [this](trg::Ui& ui) { PageGraphics(ui); }, nullptr};
+      case LauncherPage::kGameplay:
+        return {"Gameplay", "Frame rate, and what the window shows while you play.",
+                [](trg::Ui& ui) { PageGameplay(ui); }, nullptr};
+      case LauncherPage::kControls:
+        return {"Controls", "Controller, keyboard and mouse.", [](trg::Ui& ui) { PageControls(ui); }, nullptr};
+      case LauncherPage::kAchievements:
+        return {"Achievements", "Your achievements on this PC.", [this](trg::Ui& ui) { PageAchievements(ui); },
+                nullptr};
+      case LauncherPage::kAbout:
+        return {"About", "About this port, and where your files and settings live.",
+                [this](trg::Ui& ui) { PageAbout(ui); }, nullptr};
+    }
+    return {};
+  }
+
+  void PageAchievements(trg::Ui& ui) {
+    if (!game_.achievements) {
+      ui.Paragraph("Install the game to see its achievements.");
+      return;
+    }
+    if (entries_.empty()) {
+      ui.Paragraph("This game lists no achievements.");
+      return;
+    }
+    DrawAchievementsPage(ui, entries_, icons_.get());
   }
 
   void PagePlay(trg::Ui& ui) {
@@ -742,7 +792,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   LauncherPaths paths_;
   LauncherCallbacks cb_;
   GameSettings& settings_;
+  LauncherGameContext game_;
   GameFiles::State game_files_;
+  std::vector<AchievementEntry> entries_;
+  std::unique_ptr<rex::ui::AchievementIconCache> icons_;
   std::vector<MonitorInfo> monitors_;
   std::vector<GraphicsAdapter> graphics_adapters_;
   std::unique_ptr<trg::Launcher> launcher_;
@@ -826,8 +879,8 @@ void PrepareLauncherWindow() {
 }
 
 void ShowLauncher(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings,
-                  LauncherCallbacks callbacks) {
-  new LauncherDialog(drawer, std::move(paths), settings, std::move(callbacks));
+                  LauncherGameContext game, LauncherCallbacks callbacks) {
+  new LauncherDialog(drawer, std::move(paths), settings, game, std::move(callbacks));
 }
 
 void LauncherFileDropped(const std::filesystem::path& path) {
