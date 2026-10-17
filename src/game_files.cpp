@@ -702,7 +702,8 @@ InstallResult Installer::Stage() {
   buffer_.resize(kChunkBytes);
   uint64_t done = 0;
   for (const SourceFile& file : plan_) {
-    const fs::path dest = paths_.staging / FromPortable(file.path);
+    const bool is_xex = LowerNative(fs::path(file.path).native()) == LowerNative(fs::path(game_.xex_name).native());
+    const fs::path dest = paths_.staging / FromPortable(is_xex ? game_.xex_name : file.path);
     if (!IsInside(paths_.staging, dest)) {
       return Failure(InstallStatus::kNotAnInstallSource, "'" + file.path + "' would leave the staging folder");
     }
@@ -803,6 +804,10 @@ GameFiles CheckGameFiles(const fs::path& game_dir, const GameDescriptor& game) {
   }
   if (digest != game.xex_sha256) {
     return {GameFiles::kUnsupported, game.xex_name + " has SHA-256 " + ToHex(digest)};
+  }
+  if (xex->filename() != fs::path(game.xex_name)) {
+    const fs::path canonical = xex->parent_path() / game.xex_name;
+    fs::rename(*xex, canonical, ec);
   }
   for (const GameDescriptor::File& required : game.required_files) {
     const std::optional<fs::path> file = FindFile(game_dir, required.path);

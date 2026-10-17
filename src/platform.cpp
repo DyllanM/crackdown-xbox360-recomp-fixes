@@ -1,6 +1,7 @@
 #include "platform.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <sstream>
@@ -376,6 +377,10 @@ void ShowFatalMessage(const std::string& text) {
 
 void RunLauncherWithoutGraphics(const GraphicsFallbackInfo&) {
   ShowFatalMessage(kGraphicsUnavailableText);
+}
+
+bool GraphicalSessionAvailable() {
+  return true;
 }
 
 std::vector<Rect> WorkAreas() {
@@ -774,6 +779,23 @@ void ShowFatalMessage(const std::string& message) {
     }
   }
   SDL_DestroyWindow(window);
+}
+
+bool GraphicalSessionAvailable() {
+  SDL_Window* probe = SDL_CreateWindow(kWindowTitle, 64, 64, SDL_WINDOW_HIDDEN);
+  if (probe) {
+    SDL_DestroyWindow(probe);
+    return true;
+  }
+  REXLOG_ERROR("No graphical display is available ({}). Run the game from a graphical session. DISPLAY is used for "
+               "X11 and WAYLAND_DISPLAY for Wayland.",
+               SDL_GetError());
+  std::fputs("No graphical display is available.\n"
+             "Run the game from a graphical session.\n"
+             "DISPLAY is used for X11 and WAYLAND_DISPLAY for Wayland.\n",
+             stderr);
+  rex::FlushLogging();
+  return false;
 }
 
 void RunLauncherWithoutGraphics(const GraphicsFallbackInfo& info) {

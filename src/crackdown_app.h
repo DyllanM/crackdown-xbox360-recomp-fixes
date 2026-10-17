@@ -64,6 +64,9 @@ class CrackdownApp : public rex::ReXApp {
   }
 
   bool SetupPresentation() override {
+    if (!crackdown::GraphicalSessionAvailable()) {
+      return false;
+    }
     if (rex::ReXApp::SetupPresentation()) {
       return true;
     }

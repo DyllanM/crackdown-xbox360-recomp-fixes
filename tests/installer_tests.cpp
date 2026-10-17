@@ -489,7 +489,7 @@ uint64_t TotalBytes(const GameDescriptor& game) {
 // What an install of GameTree leaves, with the casing of the image.
 const std::set<std::string> kInstalledListing = {
     "AUDIO",         "AUDIO/Deep",       "AUDIO/Deep/b.bin", "AUDIO/a.bin", "Big",       "Big/big.bin",
-    "Default.xex",   "Local",            "Local/en-US",      "Local/en-US/Strings.str", "empty.txt"};
+    "default.xex",   "Local",            "Local/en-US",      "Local/en-US/Strings.str", "empty.txt"};
 
 void WriteTree(const fs::path& root, const std::vector<Node>& nodes) {
   for (const Node& node : nodes) {
@@ -1044,6 +1044,23 @@ void TestCrackdownDescriptor() {
 
 // ---- Installing ----
 
+bool HasLiteralEntry(const fs::path& dir, const std::string& name) {
+  for (const auto& entry : fs::directory_iterator(dir)) {
+    if (entry.path().filename().string() == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void TestExistingMixedCaseXexIsNormalized() {
+  Section("an existing install with Default.xex is renamed to default.xex");
+  Site site;
+  WriteTree(site.game, GameTree(site.xex));
+  CHECK(CheckGameFiles(site.game, site.descriptor).state == GameFiles::kReady);
+  CHECK(HasLiteralEntry(site.game, "default.xex") && !HasLiteralEntry(site.game, "Default.xex"));
+}
+
 void TestInstallFromImage() {
   Section("install from a disc image: only the required files, with the image's casing");
   Site site;
@@ -1055,7 +1072,8 @@ void TestInstallFromImage() {
   CHECK(CheckGameFiles(site.game, site.descriptor).state == GameFiles::kReady);
   CHECK(Listing(site.game) == kInstalledListing);
   CHECK(InstalledFromTree(site.game));
-  CHECK(ReadFile(site.game / "Default.xex") == site.xex);
+  CHECK(ReadFile(site.game / "default.xex") == site.xex);
+  CHECK(HasLiteralEntry(site.game, "default.xex") && !HasLiteralEntry(site.game, "Default.xex"));
   CHECK(NoLeftovers(site));
   CHECK(Listing(site.parent).size() == kInstalledListing.size() + 1);
 
@@ -1542,7 +1560,7 @@ void TestBadCopyIsNotActivated() {
   };
   const std::vector<Case> cases = {
       {"another build of the executable",
-       [](const fs::path& staging) { WriteFile(staging / "Default.xex", Pattern(kXexSize, 99)); },
+       [](const fs::path& staging) { WriteFile(staging / "default.xex", Pattern(kXexSize, 99)); },
        InstallStatus::kWrongVersion},
       {"a file of the wrong size",
        [](const fs::path& staging) { WriteFile(staging / "Big" / "big.bin", Pattern(10, 1)); },
@@ -2294,6 +2312,7 @@ int main(int argc, char** argv) {
   TestCheckGameFiles();
   TestCrackdownDescriptor();
   TestInstallFromImage();
+  TestExistingMixedCaseXexIsNormalized();
   TestInstallFromImageAtEveryOffset();
   TestInstallFromFolder();
   TestFolderSourceDetails();

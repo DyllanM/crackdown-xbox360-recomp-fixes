@@ -40,6 +40,9 @@ void ApplyWindowIcon();
 // message box runs zenity first, which can stall before any window appears.
 void ShowFatalMessage(const std::string& text);
 
+// False when no window can be created because the session has no usable display; logs why and flushes the log.
+bool GraphicalSessionAvailable();
+
 struct GraphicsFallbackInfo {
   std::string game_dir;
   std::string game_files_status;
