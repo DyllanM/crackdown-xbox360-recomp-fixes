@@ -32,6 +32,9 @@ Keys
   F11    toggle fullscreen / windowed
   F2     show or hide the frame counter
 
+Keyboard and mouse can be enabled on the launcher's Controls page, which also
+lists the keys and sets the mouse sensitivity. Xbox controllers keep working.
+
 Needs
 -----
 Windows 10 or 11 (64-bit), a GPU with Direct3D 12 support and the Microsoft

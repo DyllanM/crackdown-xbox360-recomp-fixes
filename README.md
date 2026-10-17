@@ -15,7 +15,7 @@
 <img width="2133" height="1147" alt="2026-10-16_23-35" src="https://github.com/user-attachments/assets/b5b7f3d7-1a8d-419c-8339-43b244cda1e2" />
 
 
-Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, with enhanced graphics, high frame rates, modern display support, a full launcher, offline achievements, language selection, and native Windows support plus experimental Linux / Steam Deck support.
+Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, with enhanced graphics, high frame rates, modern display support, keyboard and mouse support, a full launcher, offline achievements, language selection, and native Windows support plus experimental Linux / Steam Deck support.
 
 ## Features
 
@@ -38,7 +38,7 @@ Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, wit
 - **Skip intro**: starts directly at the title screen.
 - **Frame rate and render resolution in the window title**, and an **FPS counter** in the corner (toggled with **F2**).
 - **Full launcher** with an installer for your disc image or extracted files, and display, graphics and gameplay options.
-- Xbox controllers work without setup, and an optional keyboard mode is available.
+- **Keyboard and mouse support** with mouse aiming, menu navigation and configurable mouse sensitivity, while Xbox controllers continue to work normally.
 - Portable `user_data` folder for saves, settings and caches.
 
 ### Platforms
@@ -64,7 +64,7 @@ The launcher accepts the disc image (`.iso`) or a folder holding the files extra
 
 ### Windows
 
-1. Download **Crackdown-v0.1.0-windows-x64.zip** from the [latest release](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **Crackdown-v0.2.0-windows-x64.zip** from the [latest release](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **crackdown.exe**. The launcher opens.
 3. On the **Play** page click **Install from disc image...** and pick your Crackdown `.iso`, or click **Install from folder...** for extracted disc files. You can also drop either on the launcher window.
 4. Wait until **Ready to play** appears. The game files are copied into the `game` folder next to the program.
@@ -76,9 +76,9 @@ Windows may warn the first time you run the program, because the release is not 
 
 ### Linux and Steam Deck
 
-**Experimental.** Crackdown Recompiled includes a native Linux x86_64 build using ReXGlue's Vulkan backend. It does not use Proton or Wine, and the AppImage contains the same platform-neutral game and launcher features as the Windows build. It is built and checked by automated scripts and tests, but this release has not yet been fully validated on real Linux PCs or Steam Deck hardware. Reports are welcome.
+**Experimental.** Crackdown Recompiled includes a native Linux x86_64 build using ReXGlue's Vulkan backend. It does not use Proton or Wine, and the AppImage contains the same platform-neutral game and launcher features as the Windows build, including the keyboard and mouse implementation. It is built and checked by automated scripts and tests, but this release has not yet been fully validated on real Linux PCs or Steam Deck hardware, and keyboard and mouse input has been tested manually on Windows only. Reports are welcome.
 
-1. Download **CrackdownRecompiled-v0.1.0-x86_64.AppImage** from the release and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
+1. Download **CrackdownRecompiled-v0.2.0-x86_64.AppImage** from the release and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
 2. Run it, then install your disc image from the **Play** page as on Windows. The game files go in a `game` folder next to the AppImage.
 3. On a Steam Deck, do this in **Desktop Mode**, then add the AppImage with **Games > Add a Non-Steam Game to My Library** and play it from **Game Mode**.
 
@@ -130,8 +130,9 @@ Window size, monitor, VSync and graphics card take effect when you press **PLAY*
 
 ### Controls
 - Xbox controllers work without setup
-- **Keyboard**: enabled or disabled. The keys are listed on the page.
-- Plain arrow keys are the right stick. Menus use **W A S D** or **Shift + arrow** keys.
+- **Keyboard and Mouse**: enabled or disabled (off by default). **W A S D** move, the mouse turns the camera and aims, the **left mouse button** fires and the **right mouse button** locks on. It works together with any connected Xbox controller.
+- **Mouse sensitivity**: 0.25x to 3.00x (default 1.00x).
+- The complete key list is on the Controls page. Plain arrow keys also turn the camera, and menus use **W A S D** or **Shift + arrow** keys.
 
 ### About
 - The port version, game version and library versions
