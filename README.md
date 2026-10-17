@@ -4,7 +4,7 @@
 
 ### Crackdown for Xbox 360, running natively on Windows, and experimentally on Linux and Steam Deck, through static recompilation, with the TRG launcher and modern PC options
 
-[![Latest release](https://img.shields.io/github/v/release/saulob/crackdown-xbox360-recompiled?style=for-the-badge&label=release&color=40a6f2&labelColor=07101f)](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/saulob/crackdown-xbox360-recompiled?style=for-the-badge&label=release&color=40a6f2&labelColor=07101f&include_prereleases)](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/saulob/crackdown-xbox360-recompiled/total?style=for-the-badge&color=1565c0&labelColor=07101f)](https://github.com/saulob/crackdown-xbox360-recompiled/releases)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20experimental%20%7C%20Steam%20Deck%20experimental-00acc1?style=for-the-badge&labelColor=07101f)
 
