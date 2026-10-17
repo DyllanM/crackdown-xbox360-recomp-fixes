@@ -8,8 +8,16 @@
 struct ImFont;
 struct ImFontAtlas;
 
+namespace rex {
+class Runtime;
+namespace system {
+class AchievementManager;
+}  // namespace system
+}  // namespace rex
+
 namespace rex::ui {
 class ImGuiDrawer;
+class ImmediateDrawer;
 }  // namespace rex::ui
 
 namespace crackdown {
@@ -21,6 +29,13 @@ struct LauncherPaths {
   std::filesystem::path user_dir;
   std::filesystem::path settings_file;
   UserDataOutcome user_data_outcome = UserDataOutcome::kPortable;
+};
+
+// Empty when the launcher opens before the runtime exists, which is only when the game files are not installed.
+struct LauncherGameContext {
+  rex::Runtime* runtime = nullptr;
+  rex::ui::ImmediateDrawer* immediate_drawer = nullptr;
+  rex::system::AchievementManager* achievements = nullptr;
 };
 
 struct LauncherCallbacks {
@@ -59,7 +74,7 @@ void PrepareLauncherWindow();
 
 // Creates the launcher dialog; it deletes itself when closed.
 void ShowLauncher(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings,
-                  LauncherCallbacks callbacks);
+                  LauncherGameContext game, LauncherCallbacks callbacks);
 
 // A file or folder dropped on the launcher window is offered as the install source. Call on the UI thread.
 void LauncherFileDropped(const std::filesystem::path& path);

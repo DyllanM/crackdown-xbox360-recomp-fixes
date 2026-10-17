@@ -3,7 +3,7 @@
 # SDK wiring for generated/default lives in cmake/rexglue_pregenerated.cmake.
 
 cmake_minimum_required(VERSION 3.25)
-project(crackdown VERSION 0.2.0 LANGUAGES C CXX)
+project(crackdown VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,11 +50,18 @@ get_directory_property(CRACKDOWN_TRG_VERSION DIRECTORY "${_trg_dir}" DEFINITION 
 
 set(CRACKDOWN_SOURCES
     src/main.cpp
+    src/achievements_input.cpp
+    src/achievements_overlay.cpp
     src/aspect_render.cpp
     src/audio_mixer_priority.cpp
     src/audio_pcm_firewall.cpp
     src/audio_wave_timeout.cpp
     src/cache_device.cpp
+    src/cheat_hooks.cpp
+    src/cheat_menu_input.cpp
+    src/cheat_menu_overlay.cpp
+    src/cheats.cpp
+    src/debug_saulo_crash.cpp
     src/crt_native.cpp
     src/frame_counter.cpp
     src/frame_pacing.cpp
@@ -63,6 +70,8 @@ set(CRACKDOWN_SOURCES
     src/gpu_fence_wait.cpp
     src/graphics_adapters.cpp
     src/launcher.cpp
+    src/launcher_achievements.cpp
+    src/launcher_achievements_page.cpp
     src/platform.cpp
     src/settings.cpp
     src/settings_file.cpp

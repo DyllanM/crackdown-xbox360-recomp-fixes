@@ -15,6 +15,7 @@
 #include "trg/settings.h"
 
 #include "aspect_ratio.h"
+#include "cheats.h"
 #include "frame_timing.h"
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
@@ -52,6 +53,13 @@ REXCVAR_DEFINE_INT32(crackdown_launcher_width, 0, "Crackdown",
 REXCVAR_DEFINE_INT32(crackdown_launcher_height, 0, "Crackdown",
                      "Launcher window restored height, written by the launcher");
 REXCVAR_DEFINE_BOOL(crackdown_launcher_maximized, false, "Crackdown", "Launcher window was maximized when closed");
+REXCVAR_DEFINE_BOOL(cheat_infinite_health, false, "Crackdown", "Infinite Health cheat");
+REXCVAR_DEFINE_INT32(cheat_movement_speed, 0, "Crackdown", "Movement Speed cheat: 0 (Off), 2, 4, 6, 8 or 10");
+REXCVAR_DEFINE_INT32(cheat_jump_height, 0, "Crackdown", "Jump Height cheat: 0 (Off), 2, 4, 6, 8 or 10");
+REXCVAR_DEFINE_BOOL(cheat_no_fall_damage, false, "Crackdown", "No Fall Damage cheat");
+REXCVAR_DEFINE_BOOL(cheat_infinite_ammo, false, "Crackdown", "Infinite Ammo cheat");
+REXCVAR_DEFINE_BOOL(cheat_infinite_vehicle_health, false, "Crackdown", "Infinite Vehicle Health cheat");
+REXCVAR_DEFINE_INT32(cheat_vehicle_speed, 0, "Crackdown", "Vehicle Speed cheat: 0 (Off), 2, 4 or 6");
 REXCVAR_DEFINE_BOOL(crackdown_launcher_fullscreen, false, "Crackdown",
                     "Launcher was left in its own F11 fullscreen, written by the launcher");
 
@@ -81,6 +89,13 @@ const std::vector<std::string> kGameSettingKeys = {
     "anisotropic_override",
     "mnk_mode",
     "mnk_sensitivity",
+    "cheat_infinite_health",
+    "cheat_movement_speed",
+    "cheat_jump_height",
+    "cheat_no_fall_damage",
+    "cheat_infinite_ammo",
+    "cheat_infinite_vehicle_health",
+    "cheat_vehicle_speed",
 };
 
 const std::vector<std::string> kWindowKeys = {
@@ -90,6 +105,9 @@ const std::vector<std::string> kWindowKeys = {
     kTearingSetting,
     "crackdown_graphics_adapter",
 };
+
+// Cheats are read while the game runs, so changing one never needs a new process.
+bool IsCheatKey(std::string_view key) { return key.substr(0, 6) == "cheat_"; }
 
 bool IsWindowKey(std::string_view key) {
   return std::find(kWindowKeys.begin(), kWindowKeys.end(), key) != kWindowKeys.end();
@@ -177,11 +195,22 @@ void LogSettingsCheck(const std::filesystem::path& path, const SettingsFileResul
 void LoadPlayerSettings(const std::filesystem::path& path) {
   const SettingsFileResult result = CheckPlayerSettings(path);
   LogSettingsCheck(path, result);
-  if (result.state != SettingsFileState::kRepaired && result.state != SettingsFileState::kValid) {
-    return;
+  if (result.state == SettingsFileState::kRepaired || result.state == SettingsFileState::kValid) {
+    rex::cvar::LoadConfig(path);
+    REXLOG_INFO("Player settings: {}", Utf8(path));
   }
-  rex::cvar::LoadConfig(path);
-  REXLOG_INFO("Player settings: {}", Utf8(path));
+  SyncSavedCheats();
+}
+
+void SyncSavedCheats() {
+  using cheats::Cheat;
+  cheats::SetSavedValue(Cheat::InfiniteHealth, REXCVAR_GET(cheat_infinite_health) ? 1 : 0);
+  cheats::SetSavedValue(Cheat::MovementSpeed, REXCVAR_GET(cheat_movement_speed));
+  cheats::SetSavedValue(Cheat::JumpHeight, REXCVAR_GET(cheat_jump_height));
+  cheats::SetSavedValue(Cheat::NoFallDamage, REXCVAR_GET(cheat_no_fall_damage) ? 1 : 0);
+  cheats::SetSavedValue(Cheat::InfiniteAmmo, REXCVAR_GET(cheat_infinite_ammo) ? 1 : 0);
+  cheats::SetSavedValue(Cheat::InfiniteVehicleHealth, REXCVAR_GET(cheat_infinite_vehicle_health) ? 1 : 0);
+  cheats::SetSavedValue(Cheat::VehicleSpeed, REXCVAR_GET(cheat_vehicle_speed));
 }
 
 WindowPlacement SavedLauncherPlacement() {
@@ -344,6 +373,7 @@ void GameSettings::Apply() const {
   ApplyAspectRatio();
   ApplyInternalRenderPath();
   ApplyMultisampling();
+  SyncSavedCheats();
 }
 
 void GameSettings::ApplyDisplayMode() const {
@@ -419,6 +449,21 @@ bool GameSettings::WindowChanged() const {
     const auto created = window_created_.find(key);
     const std::string created_value = created == window_created_.end() ? std::string() : created->second;
     if (WindowValue(key, Get(key)) != WindowValue(key, created_value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void GameSettings::MarkRuntimeBuilt() { runtime_built_ = pending_; }
+
+bool GameSettings::RuntimeChanged() const {
+  const auto value_of = [](const std::map<std::string, std::string>& values, const std::string& key) {
+    const auto found = values.find(key);
+    return found == values.end() ? std::string() : found->second;
+  };
+  for (const std::string& key : kGameSettingKeys) {
+    if (key != kFullscreenKey && !IsCheatKey(key) && value_of(pending_, key) != value_of(runtime_built_, key)) {
       return true;
     }
   }

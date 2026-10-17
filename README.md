@@ -27,13 +27,18 @@ Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, wit
 - **Windowed or Borderless Fullscreen**, with **F11** to switch while playing, and monitor selection.
 - **Graphics card selection** (Windows): Automatic (recommended) or a specific compatible GPU.
 
+### Graphics fixes
+- **Corrected exposure and brightness**: scenes where the exposure stayed stale or wrong now adapt properly, without the frame rate cost of a full readback.
+
 ### Performance
 - **Frame rates**: 30 (Original), 60 (Recommended, the default), 90, 120, 144, 165, 240 and **Unlimited**. Game speed stays the same at every rate.
 - **Improved frame pacing**, and runtime and performance optimizations on both platforms that cut CPU waiting on the GPU.
 - **Compatibility fixes** for the recompiled game's graphics and audio.
 
 ### Quality of Life
-- **Offline achievements** with the original icons and Gamerscore. Press **F7** to open the list.
+- **Offline achievements** with the original icons and Gamerscore: an **Achievements** page in the launcher and an in-game overlay on **F7**, usable with keyboard or controller.
+- **Cheats**: 7 optional cheats set on the launcher's **Cheats** page, and changed for the session with the in-game menu on **F10**.
+- **Save-load fix**: the crash that could happen after Loading Saved Game is fixed.
 - **Language selector** with ten launcher choices: English, French, German, Italian, Spanish (Spain), Spanish (Latin America), Czech, Polish, Hungarian and Japanese.
 - **Skip intro**: starts directly at the title screen.
 - **Frame rate and render resolution in the window title**, and an **FPS counter** in the corner (toggled with **F2**).
@@ -64,7 +69,7 @@ The launcher accepts the disc image (`.iso`) or a folder holding the files extra
 
 ### Windows
 
-1. Download **Crackdown-v0.2.0-windows-x64.zip** from the [latest release](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **Crackdown-v0.3.0-windows-x64.zip** from the [latest release](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **crackdown.exe**. The launcher opens.
 3. On the **Play** page click **Install from disc image...** and pick your Crackdown `.iso`, or click **Install from folder...** for extracted disc files. You can also drop either on the launcher window.
 4. Wait until **Ready to play** appears. The game files are copied into the `game` folder next to the program.
@@ -78,7 +83,7 @@ Windows may warn the first time you run the program, because the release is not 
 
 **Experimental.** Crackdown Recompiled includes a native Linux x86_64 build using ReXGlue's Vulkan backend. It does not use Proton or Wine, and the AppImage contains the same platform-neutral game and launcher features as the Windows build, including the keyboard and mouse implementation. It is built and checked by automated scripts and tests, but this release has not yet been fully validated on real Linux PCs or Steam Deck hardware, and keyboard and mouse input has been tested manually on Windows only. Reports are welcome.
 
-1. Download **CrackdownRecompiled-v0.2.0-x86_64.AppImage** from the release and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
+1. Download **CrackdownRecompiled-v0.3.0-x86_64.AppImage** from the release and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
 2. Run it, then install your disc image from the **Play** page as on Windows. The game files go in a `game` folder next to the AppImage.
 3. On a Steam Deck, do this in **Desktop Mode**, then add the AppImage with **Games > Add a Non-Steam Game to My Library** and play it from **Game Mode**.
 
@@ -92,6 +97,7 @@ If the system cannot mount AppImages with FUSE, the AppImage unpacks itself into
 | --- | --- |
 | **F11** | Switch between Windowed and Borderless Fullscreen while playing |
 | **F7** | Open the achievements list |
+| **F10** | Open the Cheats menu (single player) |
 | **F2** | Show or hide the FPS counter |
 | **Shift** (held while starting) | Bring the launcher back |
 
@@ -128,11 +134,20 @@ Window size, monitor, VSync and graphics card take effect when you press **PLAY*
 - **Render resolution in title**: shows the render resolution in the window title, for example `Crackdown Recompiled | 2560x1440 | FPS: 60.00`. Off by default.
 - **Frame counter**: shows the frame rate and frame time (`60 FPS  16.7 ms`) in the top-right corner. Hidden by default. Press **F2** while playing to show or hide it for the session.
 
+### Cheats
+Optional gameplay modifiers, all off by default. They start with the values saved here, and **F10** in the game changes them for that session only, without touching the launcher settings (keyboard: **Up** / **Down**, **Enter**, **Esc**; controller: D-pad or left stick, **A**, **B**). Cheats apply to the local player in single player only.
+- **Infinite Health**, **No Fall Damage**, **Infinite Ammo** and **Infinite Vehicle Health** (the vehicle you drive): Off or On
+- **Movement Speed** and **Jump Height**: Off, 2x, 4x, 6x, 8x or 10x
+- **Vehicle Speed**: Off, 2x, 4x or 6x
+
 ### Controls
 - Xbox controllers work without setup
 - **Keyboard and Mouse**: enabled or disabled (off by default). **W A S D** move, the mouse turns the camera and aims, the **left mouse button** fires and the **right mouse button** locks on. It works together with any connected Xbox controller.
 - **Mouse sensitivity**: 0.25x to 3.00x (default 1.00x).
 - The complete key list is on the Controls page. Plain arrow keys also turn the camera, and menus use **W A S D** or **Shift + arrow** keys.
+
+### Achievements
+- Every achievement with its icon, description, Gamerscore and unlock status. It shows the same progress as the in-game **F7** list.
 
 ### About
 - The port version, game version and library versions
@@ -144,6 +159,8 @@ Window size, monitor, VSync and graphics card take effect when you press **PLAY*
 Crackdown includes offline achievement tracking with the original achievement icons and Gamerscore. Press **F7** while the game is running to open the achievement list, which shows each achievement's icon, description, Gamerscore, unlock status and progress. Unlock progress is saved automatically on this PC.
 
 Everything stays offline: there is no Xbox Live connection, Microsoft sign-in or online achievement synchronization.
+
+The launcher's **Achievements** page shows the same list without starting the game. In the game, **F7** opens the overlay, which can be scrolled and closed with the keyboard or a controller.
 
 ## Known issues
 

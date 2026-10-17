@@ -5,8 +5,8 @@ result is installed over the stock files in `tools/rexglue`. The game compiles a
 must not move virtual functions or data members of classes the generated game code uses.
 
 `NNNN-name.patch` applies on both platforms, `NNNN-name.windows.patch` only on Windows and `NNNN-name.linux.patch` only on
-Linux. Numbers are unique and patches apply in name order; gaps are fine. 30 patches are common, 11 are Windows only and
-11 are Linux only, so 41 apply on each platform. Patches 0005 and 0052 change the code generator and are the reason
+Linux. Numbers are unique and patches apply in name order; gaps are fine. 32 patches are common, 12 are Windows only and
+12 are Linux only, so 44 apply on each platform. Patches 0005 and 0052 change the code generator and are the reason
 `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
 
 | # | Platform | Purpose |
@@ -53,8 +53,12 @@ Linux. Numbers are unique and patches apply in name order; gaps are fine. 30 pat
 | 0053 | linux | Vulkan occlusion query results, the counterpart of 0006: the guest's begin and end blocks are separate, and the end block stays unfinished until the submission completes |
 | 0054 | all | keyboard and mouse binds also reach `XInputGetKeystroke` (menus such as Press Start), with the SDL driver's repeat timing |
 | 0055 | all | mouse look sets the right stick from mouse speed (`mnk_mouse_scale`, `mnk_mouse_deadzone`), so slow movement still turns the camera |
+| 0056 | all | `readback_resolve_max_bytes`: with `readback_resolve` on, only resolves of at most this many bytes are copied back to guest memory; larger ones stay GPU-only and may defer their writes (`resolve_defer_writeback`) |
+| 0057 | windows | D3D12 half of 0056 |
+| 0058 | linux | Vulkan half of 0056 |
+| 0059 | all | a read fault on an uncommitted page in 0x70000000-0x70FFFFFF (save-load) maps one zeroed page, at most 8 pages, each logged as `[SAVE_RECOVERY]`; writes and other ranges are not recovered |
 
-Patches 0054 and 0055 are adapted from Unowa001/crackdown-recomp (BSD 3-Clause, notice in
+Patches 0054 to 0058 are adapted from Unowa001/crackdown-recomp (BSD 3-Clause, notice in
 [THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).
 
 The AppImage runtime has its own pin and patch in `patches/appimage-runtime` (see [linux.md](linux.md)).

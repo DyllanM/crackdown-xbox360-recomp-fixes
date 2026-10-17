@@ -31,6 +31,8 @@ Keys
 ----
   F11    toggle fullscreen / windowed
   F2     show or hide the frame counter
+  F7     achievements
+  F10    cheats menu (settings are on the launcher's Cheats page)
 
 Keyboard and mouse can be enabled on the launcher's Controls page, which also
 lists the keys and sets the mouse sensitivity. Xbox controllers keep working.

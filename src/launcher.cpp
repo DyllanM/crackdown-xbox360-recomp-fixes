@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -14,19 +15,26 @@
 
 #include <rex/cvar.h>
 #include <rex/logging.h>
+#include <rex/system/achievement_manager.h>
 #include <rex/ui/imgui_dialog.h>
+#include <rex/ui/overlay/achievement_icon_cache.h>
 #include <rex/version.h>
 
 #include "trg/headers.h"
 #include "trg/launcher.h"
 #include "trg/platform.h"
 
+#include "agency_accent.h"
 #include "aspect_ratio.h"
+#include "cheats.h"
 #include "frame_timing.h"
 #include "game_files.h"
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
 #include "language_setting.h"
+#include "launcher_achievements.h"
+#include "launcher_achievements_page.h"
+#include "launcher_pages.h"
 #include "platform.h"
 #include "presentation_setting.h"
 #include "settings.h"
@@ -44,7 +52,7 @@ constexpr double kPlayFeedbackSeconds = 0.4;
 constexpr ImGuiConfigFlags kNavFlags = ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
 
 // The Agency's HUD blue, over the Midnight background.
-const ImVec4 kAccent = ImVec4(0.25f, 0.65f, 0.95f, 1.0f);
+const ImVec4 kAccent = ImVec4(kAccentRed, kAccentGreen, kAccentBlue, 1.0f);
 const ImVec4 kDeepBlue = ImVec4(0.07f, 0.18f, 0.35f, 1.0f);
 
 trg::Theme LauncherTheme() {
@@ -111,21 +119,37 @@ std::string KeyList(std::string keys) {
   return keys;
 }
 
+std::vector<AchievementEntry> LoadAchievementEntries(const rex::system::AchievementManager& manager) {
+  std::vector<AchievementEntry> entries;
+  for (rex::system::AchievementInfo& info : manager.ListAchievements()) {
+    const bool unlocked = manager.IsUnlocked(info.id);
+    entries.push_back({std::move(info), unlocked});
+  }
+  return entries;
+}
+
 class LauncherDialog;
 LauncherDialog* g_dialog = nullptr;
 
 class LauncherDialog final : public rex::ui::ImGuiDialog {
  public:
-  LauncherDialog(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings,
+  LauncherDialog(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings, LauncherGameContext game,
                  LauncherCallbacks callbacks)
       : ImGuiDialog(drawer),
         paths_(std::move(paths)),
         cb_(std::move(callbacks)),
         settings_(settings),
+        game_(game),
         game_files_(CheckAndLogGameFiles(paths_.game_dir).state),
         monitors_(ListMonitors()),
         graphics_adapters_(ListGraphicsAdapters()) {
     g_dialog = this;
+    if (game_.achievements) {
+      entries_ = LoadAchievementEntries(*game_.achievements);
+    }
+    if (game_.runtime && game_.immediate_drawer) {
+      icons_ = std::make_unique<rex::ui::AchievementIconCache>(game_.immediate_drawer, game_.runtime);
+    }
     if (SelectedAspectRatio() != AspectRatio::k16x9) {
       SelectWindowSizeForAspect();
     }
@@ -364,18 +388,9 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     c.fonts = g_fonts;
     c.branding.title = "CRACKDOWN";
     c.branding.background = LauncherHeader();
-    c.pages = {
-        {"Play", "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
-         [this] { return game_files_ != GameFiles::kReady; }},
-        {"Display", "Window, monitor and how the picture fits your screen.",
-         [this](trg::Ui& ui) { PageDisplay(ui); }},
-        {"Graphics", "Graphics card, render resolution, anti-aliasing and texture filtering.",
-         [this](trg::Ui& ui) { PageGraphics(ui); }},
-        {"Gameplay", "Frame rate, and what the window shows while you play.", [](trg::Ui& ui) { PageGameplay(ui); }},
-        {"Controls", "Controller, keyboard and mouse.", [](trg::Ui& ui) { PageControls(ui); }},
-        {"About", "About this port, and where your files and settings live.",
-         [this](trg::Ui& ui) { PageAbout(ui); }},
-    };
+    for (const LauncherPage page : kLauncherPageOrder) {
+      c.pages.push_back(PageFor(page));
+    }
     c.can_play = [this] {
       if (install_.running()) {
         return trg::PlayCheck{false, "Wait for the install to finish.", 0};
@@ -387,6 +402,46 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     };
     c.on_file_drop = [this](const std::string& path) { FileDropped(PathFromUtf8(path)); };
     return c;
+  }
+
+  trg::Page PageFor(LauncherPage page) {
+    switch (page) {
+      case LauncherPage::kPlay:
+        return {"Play", "Check the game files and start playing.", [this](trg::Ui& ui) { PagePlay(ui); },
+                [this] { return game_files_ != GameFiles::kReady; }};
+      case LauncherPage::kDisplay:
+        return {"Display", "Window, monitor and how the picture fits your screen.",
+                [this](trg::Ui& ui) { PageDisplay(ui); }, nullptr};
+      case LauncherPage::kGraphics:
+        return {"Graphics", "Graphics card, render resolution, anti-aliasing and texture filtering.",
+                [this](trg::Ui& ui) { PageGraphics(ui); }, nullptr};
+      case LauncherPage::kGameplay:
+        return {"Gameplay", "Frame rate, and what the window shows while you play.",
+                [](trg::Ui& ui) { PageGameplay(ui); }, nullptr};
+      case LauncherPage::kCheats:
+        return {"Cheats", "Optional gameplay modifiers", [](trg::Ui& ui) { PageCheats(ui); }, nullptr};
+      case LauncherPage::kControls:
+        return {"Controls", "Controller, keyboard and mouse.", [](trg::Ui& ui) { PageControls(ui); }, nullptr};
+      case LauncherPage::kAchievements:
+        return {"Achievements", "Your achievements on this PC.", [this](trg::Ui& ui) { PageAchievements(ui); },
+                nullptr};
+      case LauncherPage::kAbout:
+        return {"About", "About this port, and where your files and settings live.",
+                [this](trg::Ui& ui) { PageAbout(ui); }, nullptr};
+    }
+    return {};
+  }
+
+  void PageAchievements(trg::Ui& ui) {
+    if (!game_.achievements) {
+      ui.Paragraph("Install the game to see its achievements.");
+      return;
+    }
+    if (entries_.empty()) {
+      ui.Paragraph("This game lists no achievements.");
+      return;
+    }
+    DrawAchievementsPage(ui, entries_, icons_.get());
   }
 
   void PagePlay(trg::Ui& ui) {
@@ -694,6 +749,32 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
               "crackdown_show_frame_counter", false, "Hidden", "Shown");
   }
 
+  static std::vector<trg::Option> MultiplierOptions(std::span<const int> values) {
+    std::vector<trg::Option> options;
+    for (const int value : values) {
+      options.push_back({std::to_string(value), cheats::ValueLabel(cheats::Kind::Multiplier, value)});
+    }
+    return options;
+  }
+
+  static void PageCheats(trg::Ui& ui) {
+    ui.Paragraph("Cheats start with these values. F10 in the game changes them for that session only.");
+    ui.Heading("PLAYER");
+    ui.Toggle("Infinite Health", "Your character takes no damage.", "cheat_infinite_health", false, "Off", "On");
+    ui.Combo("Movement Speed", "How much faster your character moves on foot.", "cheat_movement_speed", "0",
+             MultiplierOptions(cheats::kMovementValues));
+    ui.Combo("Jump Height", "How much higher your character jumps.", "cheat_jump_height", "0",
+             MultiplierOptions(cheats::kMovementValues));
+    ui.Toggle("No Fall Damage", "Falling does not hurt your character.", "cheat_no_fall_damage", false, "Off", "On");
+    ui.Heading("WEAPONS");
+    ui.Toggle("Infinite Ammo", "Weapons never run out of ammunition.", "cheat_infinite_ammo", false, "Off", "On");
+    ui.Heading("VEHICLE");
+    ui.Toggle("Infinite Vehicle Health", "The vehicle you drive takes no damage.", "cheat_infinite_vehicle_health",
+              false, "Off", "On");
+    ui.Combo("Vehicle Speed", "How much faster the vehicle you drive goes.", "cheat_vehicle_speed", "0",
+             MultiplierOptions(cheats::kVehicleValues));
+  }
+
   static void PageControls(trg::Ui& ui) {
     ui.Info("Controller", "Automatic: Xbox controllers work without setup.");
     ui.Toggle("Keyboard and Mouse",
@@ -742,7 +823,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   LauncherPaths paths_;
   LauncherCallbacks cb_;
   GameSettings& settings_;
+  LauncherGameContext game_;
   GameFiles::State game_files_;
+  std::vector<AchievementEntry> entries_;
+  std::unique_ptr<rex::ui::AchievementIconCache> icons_;
   std::vector<MonitorInfo> monitors_;
   std::vector<GraphicsAdapter> graphics_adapters_;
   std::unique_ptr<trg::Launcher> launcher_;
@@ -826,8 +910,8 @@ void PrepareLauncherWindow() {
 }
 
 void ShowLauncher(rex::ui::ImGuiDrawer* drawer, LauncherPaths paths, GameSettings& settings,
-                  LauncherCallbacks callbacks) {
-  new LauncherDialog(drawer, std::move(paths), settings, std::move(callbacks));
+                  LauncherGameContext game, LauncherCallbacks callbacks) {
+  new LauncherDialog(drawer, std::move(paths), settings, game, std::move(callbacks));
 }
 
 void LauncherFileDropped(const std::filesystem::path& path) {

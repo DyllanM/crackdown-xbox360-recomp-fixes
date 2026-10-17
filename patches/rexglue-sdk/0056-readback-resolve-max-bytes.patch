@@ -1,0 +1,112 @@
+diff --git a/include/rex/graphics/command_processor.h b/include/rex/graphics/command_processor.h
+index e36d946..1c16164 100644
+--- a/include/rex/graphics/command_processor.h
++++ b/include/rex/graphics/command_processor.h
+@@ -232,6 +232,8 @@ class CommandProcessor {
+ 
+   // Shared readback resolve mode with backend legacy-flag alias support.
+   ReadbackResolveMode GetReadbackResolveMode(bool legacy_readback_resolve_enabled) const;
++  // Resolves above the limit are not copied back to guest memory and may defer their writes.
++  uint32_t GetReadbackResolveSizeLimit(ReadbackResolveMode mode) const;
+   // Shared memexport readback enable state with backend legacy-flag override support.
+   bool IsReadbackMemexportEnabled(bool legacy_backend_flag) const;
+ 
+diff --git a/include/rex/graphics/flags.h b/include/rex/graphics/flags.h
+index bbf0295..82840da 100644
+--- a/include/rex/graphics/flags.h
++++ b/include/rex/graphics/flags.h
+@@ -27,6 +27,7 @@ REXCVAR_DECLARE(int32_t, internal_render_scale);
+ REXCVAR_DECLARE(bool, resolve_resolution_scale_fill_half_pixel_offset);
+ REXCVAR_DECLARE(bool, draw_resolution_scaled_texture_offsets);
+ REXCVAR_DECLARE(std::string, readback_resolve);
++REXCVAR_DECLARE(int32_t, readback_resolve_max_bytes);
+ REXCVAR_DECLARE(bool, readback_resolve_half_pixel_offset);
+ REXCVAR_DECLARE(bool, readback_memexport);
+ REXCVAR_DECLARE(bool, readback_memexport_fast);
+diff --git a/include/rex/graphics/pipeline/render_target/cache.h b/include/rex/graphics/pipeline/render_target/cache.h
+index 3a3b187..9f9e015 100644
+--- a/include/rex/graphics/pipeline/render_target/cache.h
++++ b/include/rex/graphics/pipeline/render_target/cache.h
+@@ -189,11 +189,9 @@ class RenderTargetCache {
+ 
+   virtual void BeginFrame();
+ 
+-  // Resolves with deferred memory writes (resolve_defer_writeback, see DeferredResolve). Readback
+-  // needs the resolved memory right away.
+-  void SetResolveWritebackDeferralAllowed(bool allowed) {
+-    resolve_writeback_deferral_allowed_ = allowed;
+-  }
++  // Resolves larger than the limit may defer their memory writes (resolve_defer_writeback, see
++  // DeferredResolve). The others are read back and need their memory right away.
++  void SetResolveReadbackSizeLimit(uint32_t limit) { resolve_readback_size_limit_ = limit; }
+   // Writes the memory of the deferred resolves overlapping the guest range.
+   void MaterializeDeferredResolves(uint32_t start, uint32_t length);
+   // At the beginning of a frame: writes the memory of those not repeated in the previous frame.
+@@ -626,7 +624,7 @@ class RenderTargetCache {
+                                           draw_util::ResolveCopyShaderIndex copy_shader,
+                                           const draw_util::ResolveCopyShaderConstants& constants,
+                                           uint32_t group_count_x, uint32_t group_count_y);
+-  bool CanDeferResolveWriteback(const draw_util::ResolveTextureCopy& copy,
++  bool CanDeferResolveWriteback(const draw_util::ResolveTextureCopy& copy, uint32_t extent_length,
+                                 const TextureCache& texture_cache,
+                                 TextureCache::DeferredResolveTexture texture) const;
+   // Before a resolve writes its range: deferred resolves writing the same bytes are dropped, others
+@@ -681,7 +679,7 @@ class RenderTargetCache {
+   std::vector<DeferredResolve> deferred_resolves_;
+   TextureCache* deferred_resolve_texture_cache_ = nullptr;
+   uint64_t deferred_resolve_frame_ = 0;
+-  bool resolve_writeback_deferral_allowed_ = false;
++  uint32_t resolve_readback_size_limit_ = UINT32_MAX;
+ 
+   DrawExtentEstimator draw_extent_estimator_;
+ 
+diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
+index 664763c..708cf23 100644
+--- a/src/graphics/command_processor.cpp
++++ b/src/graphics/command_processor.cpp
+@@ -58,6 +58,11 @@ REXCVAR_DEFINE_STRING(readback_resolve, "none", "GPU",
+     .allowed({"none", "fast", "some", "full"})
+     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+ 
++REXCVAR_DEFINE_INT32(readback_resolve_max_bytes, 0, "GPU",
++                     "With readback_resolve on: copy back only resolves of at most this many bytes "
++                     "(0 = all). Larger resolves stay GPU-only.")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
+ REXCVAR_DEFINE_BOOL(readback_resolve_half_pixel_offset, false, "GPU",
+                     "When draw resolution scaling is active, sample from the center of each "
+                     "scaled block during resolve readback downscale")
+@@ -221,6 +226,14 @@ ReadbackResolveMode CommandProcessor::GetReadbackResolveMode(
+                                          : ReadbackResolveMode::kDisabled;
+ }
+ 
++uint32_t CommandProcessor::GetReadbackResolveSizeLimit(ReadbackResolveMode mode) const {
++  if (mode == ReadbackResolveMode::kDisabled) {
++    return 0;
++  }
++  int32_t max_bytes = REXCVAR_GET(readback_resolve_max_bytes);
++  return max_bytes > 0 ? uint32_t(max_bytes) : UINT32_MAX;
++}
++
+ bool CommandProcessor::IsReadbackMemexportEnabled(bool legacy_backend_flag) const {
+   if (legacy_readback_memexport_cvar_name_ &&
+       rex::cvar::HasNonDefaultValue(legacy_readback_memexport_cvar_name_)) {
+diff --git a/src/graphics/pipeline/render_target/cache.cpp b/src/graphics/pipeline/render_target/cache.cpp
+index 5f926d7..5c9bc33 100644
+--- a/src/graphics/pipeline/render_target/cache.cpp
++++ b/src/graphics/pipeline/render_target/cache.cpp
+@@ -458,11 +458,11 @@ RenderTargetCache::DeferredResolve RenderTargetCache::GetResolveWrites(
+ }
+ 
+ bool RenderTargetCache::CanDeferResolveWriteback(
+-    const draw_util::ResolveTextureCopy& copy, const TextureCache& texture_cache,
+-    TextureCache::DeferredResolveTexture texture) const {
++    const draw_util::ResolveTextureCopy& copy, uint32_t extent_length,
++    const TextureCache& texture_cache, TextureCache::DeferredResolveTexture texture) const {
+   // Rewriting the memory from the texture reproduces only what the texture covers. Without
+   // resolution scaling, other GPU work reads the resolved memory directly.
+-  return REXCVAR_GET(resolve_defer_writeback) && resolve_writeback_deferral_allowed_ &&
++  return REXCVAR_GET(resolve_defer_writeback) && extent_length > resolve_readback_size_limit_ &&
+          IsDrawResolutionScaled() && !AreHostRenderTargetsReduced() &&
+          texture_cache.TextureCoversResolve(texture, copy.width, copy.height);
+ }
