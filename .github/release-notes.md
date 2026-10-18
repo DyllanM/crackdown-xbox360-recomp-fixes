@@ -97,5 +97,5 @@ SHA-256 files are published with the release for both downloads: `Crackdown-v0.4
 
 | File | SHA-256 |
 | --- | --- |
-| `Crackdown-v0.4.0-windows-x64.zip` | `pending` |
-| `CrackdownRecompiled-v0.4.0-x86_64.AppImage` | `pending` |
+| `Crackdown-v0.4.0-windows-x64.zip` | `0a215dec75177490258bdf5637f6dba9283f6696ff32cc80467f7c81cd3c2557` |
+| `CrackdownRecompiled-v0.4.0-x86_64.AppImage` | `6ba0895e2861b75a81938bdb5c306c186deeb2e459d63f70a54a901930643ae7` |
