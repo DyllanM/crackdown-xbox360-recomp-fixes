@@ -1,1 +1,0 @@
-crackdown_add_test(debug_saulo_frame_stats_tests SOURCES debug_saulo_frame_stats_tests.cpp)

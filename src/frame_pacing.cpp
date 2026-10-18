@@ -23,7 +23,6 @@
 #include <rex/logging.h>
 #include <rex/ppc.h>
 
-#include "debug_saulo_perf.h"
 #include "frame_pacing.h"
 #include "frame_timing.h"
 #include "settings.h"
@@ -61,7 +60,6 @@ constexpr uint32_t kVariableStepFrameMs = 16;
 std::atomic<uint32_t> g_step_bits{std::bit_cast<uint32_t>(1.0f / 60.0f)};
 std::atomic<uint32_t> g_frame_ms{kVariableStepFrameMs};
 std::atomic<double> g_original_steps{crackdown::FixedFrameStep(crackdown::kDefaultFrameRate).original_steps};
-std::atomic<double> g_timing_debt_ms{0.0};
 
 // Only the main thread runs frames.
 FrameStep g_step = crackdown::FixedFrameStep(crackdown::kDefaultFrameRate);
@@ -73,52 +71,15 @@ double g_logical_tick_fraction = 0.0;
 double g_frame_ms_fraction = 0.0;
 int g_logged_rate = -1;
 
-// DEBUG_SAULO: missed-frame compensation telemetry for the performance report.
-struct TimingStats {
-  std::atomic<uint64_t> frames{0};
-  std::atomic<uint64_t> snapped{0};
-  std::atomic<uint64_t> compensated{0};
-  std::atomic<uint64_t> clamped{0};
-  std::atomic<int64_t> actual_ns_sum{0};
-  std::atomic<int64_t> sim_ns_sum{0};
-};
-TimingStats g_timing_stats;
-
-void RecordTimingSample(double interval_seconds, double applied_seconds, bool classify,
-                         crackdown::CompensatedStepClock::Kind kind) {
-  g_timing_stats.frames.fetch_add(1, std::memory_order_relaxed);
-  g_timing_stats.actual_ns_sum.fetch_add(int64_t(interval_seconds * 1e9), std::memory_order_relaxed);
-  g_timing_stats.sim_ns_sum.fetch_add(int64_t(applied_seconds * 1e9), std::memory_order_relaxed);
-  if (!classify) {
-    return;
-  }
-  switch (kind) {
-    case crackdown::CompensatedStepClock::Kind::kSnapped:
-      g_timing_stats.snapped.fetch_add(1, std::memory_order_relaxed);
-      break;
-    case crackdown::CompensatedStepClock::Kind::kCompensated:
-      g_timing_stats.compensated.fetch_add(1, std::memory_order_relaxed);
-      break;
-    case crackdown::CompensatedStepClock::Kind::kClamped:
-      g_timing_stats.clamped.fetch_add(1, std::memory_order_relaxed);
-      break;
-  }
-}
-
 // 30 and 60 both present at the guest vblank (no host pacing), so a slow frame already shows up as a longer
 // measured interval here; resets the clock on a rate change so switching rates never carries over stale debt.
-crackdown::FrameStep ConsolePacedStep(int rate, double interval, crackdown::CompensatedStepClock::Kind& kind) {
+crackdown::FrameStep ConsolePacedStep(int rate, double interval) {
   if (rate != g_console_rate) {
     g_console_rate = rate;
     g_console_clock.Reset();
-    g_timing_debt_ms.store(0.0, std::memory_order_relaxed);
-    kind = crackdown::CompensatedStepClock::Kind::kSnapped;
     return crackdown::FixedFrameStep(rate);
   }
-  const crackdown::CompensatedStepClock::Result result = g_console_clock.Take(interval, 1.0 / rate);
-  g_timing_debt_ms.store(g_console_clock.owed() * 1000.0, std::memory_order_relaxed);
-  kind = result.kind;
-  return crackdown::StepFromSeconds(result.seconds);
+  return crackdown::StepFromSeconds(g_console_clock.Take(interval, 1.0 / rate).seconds);
 }
 
 // Set by the launcher before the title starts.
@@ -154,21 +115,10 @@ int64_t NowNs() {
       .count();
 }
 
-// DEBUG_SAULO: main-loop timing for the performance report.
-struct MainLoopStats {
-  std::atomic<uint64_t> frames{0};
-  std::atomic<uint64_t> body_ns{0};
-  std::atomic<uint64_t> max_body_ns{0};
-  std::atomic<uint64_t> pacer_wait_ns{0};
-  std::atomic<uint64_t> pacer_spin_ns{0};
-};
-MainLoopStats g_main_loop_stats;
-
 // Sleeps until shortly before the deadline, then yields until it, so a coarse timer cannot make the frame late.
 void WaitUntil(int64_t deadline_ns) {
   constexpr int64_t kYieldNs = 500'000;
-  const int64_t start = NowNs();
-  const int64_t remaining = deadline_ns - start;
+  const int64_t remaining = deadline_ns - NowNs();
   if (remaining > kYieldNs) {
 #if defined(_WIN32)
     thread_local HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
@@ -186,14 +136,9 @@ void WaitUntil(int64_t deadline_ns) {
             std::chrono::nanoseconds(deadline_ns - kYieldNs))));
 #endif
   }
-  const int64_t spin_start = NowNs();
   while (NowNs() < deadline_ns) {
     std::this_thread::yield();
   }
-  const int64_t end = NowNs();
-  g_main_loop_stats.pacer_wait_ns.fetch_add(uint64_t(end - start), std::memory_order_relaxed);
-  g_main_loop_stats.pacer_spin_ns.fetch_add(uint64_t(std::max<int64_t>(0, end - spin_start)),
-                                            std::memory_order_relaxed);
 }
 
 // The timing object can be replaced while the title runs, and every new one starts in fixed-step mode.
@@ -217,13 +162,10 @@ void BeginFrame(int rate) {
     g_step = frame.step;
     g_frame_ms_fraction += g_step.seconds * 1000.0;
     g_frame_ms.store(crackdown::TakeWhole(g_frame_ms_fraction), std::memory_order_relaxed);
-    RecordTimingSample(g_step.seconds, g_step.seconds, false, crackdown::CompensatedStepClock::Kind::kSnapped);
   } else {
     const double interval = g_console_last_ns ? double(now - g_console_last_ns) * 1e-9 : 0.0;
     g_console_last_ns = now;
-    crackdown::CompensatedStepClock::Kind kind = crackdown::CompensatedStepClock::Kind::kSnapped;
-    g_step = ConsolePacedStep(rate, interval, kind);
-    RecordTimingSample(interval, g_step.seconds, true, kind);
+    g_step = ConsolePacedStep(rate, interval);
   }
   g_step_bits.store(std::bit_cast<uint32_t>(g_step.seconds_f), std::memory_order_relaxed);
   g_original_steps.store(g_step.original_steps, std::memory_order_relaxed);
@@ -267,14 +209,7 @@ REX_HOOK_RAW(sub_826A7698) {
   if (HighFrameRate(rate)) {
     SelectVariableStep(base, rate);
   }
-  const int64_t body_start = NowNs();
   __imp__sub_826A7698(ctx, base);
-  const uint64_t body_ns = uint64_t(NowNs() - body_start);
-  g_main_loop_stats.frames.fetch_add(1, std::memory_order_relaxed);
-  g_main_loop_stats.body_ns.fetch_add(body_ns, std::memory_order_relaxed);
-  if (body_ns > g_main_loop_stats.max_body_ns.load(std::memory_order_relaxed)) {
-    g_main_loop_stats.max_body_ns.store(body_ns, std::memory_order_relaxed);
-  }
 }
 
 // The simulation update. Its only caller passes 1/30 s times the time scale; g_step.original_steps is exactly 1.0
@@ -339,29 +274,4 @@ void crackdown_variable_step_frame_ms(PPCRegister& frame_ms) {
 
 double crackdown::OriginalStepsPerUpdate() {
   return g_original_steps.load(std::memory_order_relaxed);
-}
-
-void crackdown::debug_saulo::LogMainLoopStats() {
-  const uint64_t frames = g_main_loop_stats.frames.exchange(0, std::memory_order_relaxed);
-  const double per_frame = frames ? 1e-6 / double(frames) : 0;
-  REXLOG_INFO(
-      "[DEBUG_SAULO][PerfMainLoop] rate={} frames={} body_avg_ms={:.2f} body_max_ms={:.2f} pacer_wait_avg_ms={:.2f} "
-      "pacer_spin_avg_ms={:.3f}",
-      FrameRate(), frames, double(g_main_loop_stats.body_ns.exchange(0, std::memory_order_relaxed)) * per_frame,
-      double(g_main_loop_stats.max_body_ns.exchange(0, std::memory_order_relaxed)) * 1e-6,
-      double(g_main_loop_stats.pacer_wait_ns.exchange(0, std::memory_order_relaxed)) * per_frame,
-      double(g_main_loop_stats.pacer_spin_ns.exchange(0, std::memory_order_relaxed)) * per_frame);
-}
-
-void crackdown::debug_saulo::LogTimingStats() {
-  const uint64_t frames = g_timing_stats.frames.exchange(0, std::memory_order_relaxed);
-  const double per_frame = frames ? 1e-6 / double(frames) : 0;
-  REXLOG_INFO(
-      "[DEBUG_SAULO][PerfTiming] rate={} frames={} actual_avg_ms={:.2f} sim_avg_ms={:.2f} snapped={} compensated={} "
-      "clamped={} debt_ms={:.2f}",
-      FrameRate(), frames, double(g_timing_stats.actual_ns_sum.exchange(0, std::memory_order_relaxed)) * per_frame,
-      double(g_timing_stats.sim_ns_sum.exchange(0, std::memory_order_relaxed)) * per_frame,
-      g_timing_stats.snapped.exchange(0, std::memory_order_relaxed),
-      g_timing_stats.compensated.exchange(0, std::memory_order_relaxed),
-      g_timing_stats.clamped.exchange(0, std::memory_order_relaxed), g_timing_debt_ms.load(std::memory_order_relaxed));
 }

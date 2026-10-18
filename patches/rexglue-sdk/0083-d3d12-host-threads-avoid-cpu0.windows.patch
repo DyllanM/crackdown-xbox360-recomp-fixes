@@ -2,7 +2,6 @@ Adapted from patches/sdk/0026-gpu-host-threads-avoid-cpu0.patch in Unowa001/crac
 Copyright (c) 2026, Jerrod (Unowa001). BSD 3-Clause License, see packaging/licenses/THIRD-PARTY-LICENSES.txt.
 
 diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
-index f0e7196..e8a8f61 100644
 --- a/src/graphics/d3d12/command_processor.cpp
 +++ b/src/graphics/d3d12/command_processor.cpp
 @@ -10,6 +10,7 @@
@@ -10,10 +9,10 @@ index f0e7196..e8a8f61 100644
  
  #include <algorithm>
 +#include <bit>
- #include <chrono>
  #include <cstdarg>
  #include <cstring>
-@@ -59,6 +60,11 @@ REXCVAR_DEFINE_BOOL(d3d12_async_submission, true, "GPU/D3D12",
+ #include <sstream>
+@@ -52,6 +53,11 @@ REXCVAR_DEFINE_BOOL(d3d12_async_submission, true, "GPU/D3D12",
                      "command processor thread")
      .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
  
@@ -25,10 +24,12 @@ index f0e7196..e8a8f61 100644
  REXCVAR_DEFINE_UINT32(d3d12_async_submission_draws, 2000, "GPU/D3D12",
                        "With d3d12_async_submission, also end the submission every this many draws "
                        "outside occlusion queries, so less of the frame is left for the swap "
-@@ -147,6 +153,21 @@ void DebugSauloReportD3D12() {
- // What is left of this frame's wait for pipelines created in the background (async_shader_wait_ms).
- int64_t pipeline_wait_budget_us = 0;
+@@ -60,6 +66,25 @@ REXCVAR_DEFINE_UINT32(d3d12_async_submission_draws, 2000, "GPU/D3D12",
  
+ namespace rex::graphics::d3d12 {
+ 
++namespace {
++
 +// The process's logical CPUs except 0 and 1, or 0 to leave the threads alone: with fewer than 8, or
 +// when the process spans several processor groups (no single-group mask then).
 +uint64_t GetHostThreadAffinityMask() {
@@ -44,16 +45,17 @@ index f0e7196..e8a8f61 100644
 +  return uint64_t(process_mask) & ~uint64_t(0b11);
 +}
 +
- }  // namespace
- 
++}  // namespace
++
  // Generated with `xb buildshaders`.
-@@ -1727,6 +1748,19 @@ bool D3D12CommandProcessor::SetupContext() {
+ namespace shaders {
+ #include "../shaders/bytecode/d3d12_5_1/apply_gamma_pwl_cs.h"
+@@ -1638,6 +1663,16 @@ bool D3D12CommandProcessor::SetupContext() {
      StartAsyncSubmission();
    }
  
 +  // Best effort: the threads keep their affinity if this fails.
-+  uint64_t host_thread_affinity_mask = GetHostThreadAffinityMask();
-+  if (host_thread_affinity_mask) {
++  if (uint64_t host_thread_affinity_mask = GetHostThreadAffinityMask()) {
 +    if (rex::thread::Thread* command_processor_thread = rex::thread::Thread::GetCurrentThread()) {
 +      command_processor_thread->set_affinity_mask(host_thread_affinity_mask);
 +    }
@@ -61,8 +63,6 @@ index f0e7196..e8a8f61 100644
 +      async_submission_thread_->set_affinity_mask(host_thread_affinity_mask);
 +    }
 +  }
-+  REXGPU_INFO("[DEBUG_SAULO][GpuHostThreads] affinity_mask={:#x} async_submission={}",
-+              host_thread_affinity_mask, async_submission_enabled_);
 +
    return true;
  }

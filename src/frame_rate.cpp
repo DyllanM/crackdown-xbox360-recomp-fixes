@@ -14,7 +14,6 @@
 #include <rex/ui/window.h>
 #include <rex/ui/windowed_app_context.h>
 
-#include "debug_saulo_perf.h"
 #include "platform.h"
 #include "settings.h"
 #include "window_title.h"
@@ -145,10 +144,7 @@ REX_HOOK_RAW(sub_826BCA98) {
 // Named like the SDK's export, so REX_EXTERN would call this hook again: the original is called by its entry point.
 REX_HOOK_RAW(__imp__VdSwap) {
   rex::ppc::HostToGuestFunction<rex::kernel::xboxkrnl::VdSwap_entry>(ctx, base);
-  if (t_repeat_present) {
-    crackdown::debug_saulo::RecordRepeatedPresent();
-    return;
+  if (!t_repeat_present) {
+    crackdown::CountGuestFrame();
   }
-  crackdown::CountGuestFrame();
-  crackdown::debug_saulo::RecordGuestFrame();
 }

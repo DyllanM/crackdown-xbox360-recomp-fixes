@@ -25,7 +25,6 @@
 #include "cheat_menu_input.h"
 #include "cheat_menu_key.h"
 #include "cheat_menu_overlay.h"
-#include "debug_saulo_perf.h"
 #include "frame_counter.h"
 #include "frame_rate.h"
 #include "game_files.h"
@@ -186,7 +185,6 @@ class CrackdownApp : public rex::ReXApp {
       MountCacheDevice(runtime()->file_system(), user_data_root());
       crackdown::InstallCrashDiagnostics(runtime()->virtual_membase());
     }
-    crackdown::debug_saulo::StartPerfReport();
     if (window()) {
       AttachWindowHost(
           window(), app_context(),
@@ -220,7 +218,6 @@ class CrackdownApp : public rex::ReXApp {
     CloseCheatMenu();
     DetachWindowHost();
     crackdown::DetachFrameRate();
-    crackdown::debug_saulo::StopPerfReport();
   }
 
  private:

@@ -7,8 +7,6 @@ gpu_plugin = "xenos"
 readback_resolve = "fast"
 # Copy back only resolves up to 256 KB; the large ones are not read on the CPU and cost frame rate.
 readback_resolve_max_bytes = 262144
-# A draw whose pipeline is still being created may wait for it, up to 8 ms a frame in total, before it is skipped.
-async_shader_wait_ms = 8
 log_max_file_size_mb = 30
 log_max_files = 2
 

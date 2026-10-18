@@ -3,7 +3,7 @@
 # SDK wiring for generated/default lives in cmake/rexglue_pregenerated.cmake.
 
 cmake_minimum_required(VERSION 3.25)
-project(crackdown VERSION 0.3.1 LANGUAGES C CXX)
+project(crackdown VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,7 +63,6 @@ set(CRACKDOWN_SOURCES
     src/cheat_menu_overlay.cpp
     src/cheats.cpp
     src/crt_native.cpp
-    src/debug_saulo_perf.cpp
     src/frame_counter.cpp
     src/frame_pacing.cpp
     src/frame_rate.cpp

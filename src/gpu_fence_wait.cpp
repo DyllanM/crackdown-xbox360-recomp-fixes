@@ -1,12 +1,11 @@
 // The Direct3D GPU waits block on the word they poll instead of spinning; the command processor wakes them when it
-// writes guest memory (patches 0033 and 0068).
+// writes guest memory (patches 0033 and 0069).
 
 #include <atomic>
 #include <bit>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
-#include <string>
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -28,8 +27,6 @@
 #include <rex/logging.h>
 #include <rex/system/kernel_state.h>
 #include <rex/system/xmemory.h>
-
-#include "debug_saulo_perf.h"
 
 #if defined(_WIN32) || defined(__linux__)
 
@@ -69,20 +66,6 @@ constexpr PollSite kSites[] = {
 };
 constexpr size_t kSiteCount = std::size(kSites);
 constexpr size_t kOtherSite = kSiteCount;
-
-// DEBUG_SAULO: per-site counters for the performance report.
-struct alignas(64) SiteStats {
-  std::atomic<uint64_t> polls{0};
-  std::atomic<uint64_t> blocks{0};
-  std::atomic<uint64_t> woken{0};
-  std::atomic<uint64_t> spurious{0};
-  std::atomic<uint64_t> timeouts{0};
-  std::atomic<uint64_t> missed{0};
-  std::atomic<uint64_t> failed{0};
-  std::atomic<uint64_t> blocked_ns{0};
-  std::atomic<uint64_t> max_blocked_ns{0};
-};
-SiteStats g_stats[kSiteCount + 1];
 
 struct alignas(64) SiteState {
   std::atomic<bool> blocking{true};
@@ -188,43 +171,22 @@ WaitOutcome WaitWhileEqual(const uint32_t* word, uint32_t undesired, uint32_t ti
 #endif
 }
 
-void RecordBlockedTime(SiteStats& stats, uint64_t ns) {
-  stats.blocked_ns.fetch_add(ns, std::memory_order_relaxed);
-  uint64_t max = stats.max_blocked_ns.load(std::memory_order_relaxed);
-  while (ns > max && !stats.max_blocked_ns.compare_exchange_weak(max, ns, std::memory_order_relaxed)) {
-  }
-}
-
 void BlockUntilWordWritten(size_t site, WaitState& wait) {
-  SiteStats& stats = g_stats[site];
-  stats.blocks.fetch_add(1, std::memory_order_relaxed);
-  const int64_t start = crackdown::debug_saulo::PerfNowNs();
   const WaitOutcome outcome = WaitWhileEqual(wait.word, wait.seen, kSites[site].timeout_ms);
-  RecordBlockedTime(stats, uint64_t(crackdown::debug_saulo::PerfNowNs() - start));
   const uint32_t current = LoadWord(wait.word);
   if (outcome == WaitOutcome::kFailed) {
-    stats.failed.fetch_add(1, std::memory_order_relaxed);
     DisableBlocking(site, "wait failed");
   } else if (!ViewsAgree(wait.word, wait.guest_word)) {
     DisableBlocking(site, "the guest reads another address");
   }
   SiteState& state = g_site_state[site];
   if (outcome == WaitOutcome::kTimedOut) {
-    if (current != wait.seen) {
-      stats.missed.fetch_add(1, std::memory_order_relaxed);
-      if (state.missed_wakes.fetch_add(1, std::memory_order_relaxed) + 1 >= kMissedWakeLimit) {
-        DisableBlocking(site, "its writer does not wake it");
-      }
-    } else {
-      stats.timeouts.fetch_add(1, std::memory_order_relaxed);
+    if (current != wait.seen &&
+        state.missed_wakes.fetch_add(1, std::memory_order_relaxed) + 1 >= kMissedWakeLimit) {
+      DisableBlocking(site, "its writer does not wake it");
     }
-  } else if (outcome == WaitOutcome::kReturned) {
-    if (current != wait.seen) {
-      stats.woken.fetch_add(1, std::memory_order_relaxed);
-      state.missed_wakes.store(0, std::memory_order_relaxed);
-    } else {
-      stats.spurious.fetch_add(1, std::memory_order_relaxed);
-    }
+  } else if (outcome == WaitOutcome::kReturned && current != wait.seen) {
+    state.missed_wakes.store(0, std::memory_order_relaxed);
   }
   wait.seen = current;
 }
@@ -243,7 +205,6 @@ REX_HOOK_RAW(sub_826BBEE0) {
   const uint32_t object = ctx.r3.u32;
   const size_t site = SiteIndex(uint32_t(ctx.lr));
   __imp__sub_826BBEE0(ctx, base);
-  g_stats[site].polls.fetch_add(1, std::memory_order_relaxed);
   if (site == kOtherSite || !kSites[site].blocks || !ctx.r3.u32 ||
       !g_site_state[site].blocking.load(std::memory_order_relaxed)) {
     return;
@@ -273,41 +234,5 @@ REX_HOOK_RAW(sub_826BBEE0) {
   }
   BlockUntilWordWritten(site, wait);
 }
-
-namespace crackdown::debug_saulo {
-
-void LogFenceWaitStats() {
-  std::string line;
-  for (size_t i = 0; i <= kSiteCount; ++i) {
-    SiteStats& stats = g_stats[i];
-    const uint64_t polls = stats.polls.exchange(0, std::memory_order_relaxed);
-    const uint64_t blocks = stats.blocks.exchange(0, std::memory_order_relaxed);
-    const uint64_t woken = stats.woken.exchange(0, std::memory_order_relaxed);
-    const uint64_t spurious = stats.spurious.exchange(0, std::memory_order_relaxed);
-    const uint64_t timeouts = stats.timeouts.exchange(0, std::memory_order_relaxed);
-    const uint64_t missed = stats.missed.exchange(0, std::memory_order_relaxed);
-    const uint64_t failed = stats.failed.exchange(0, std::memory_order_relaxed);
-    const uint64_t blocked_ns = stats.blocked_ns.exchange(0, std::memory_order_relaxed);
-    const uint64_t max_ns = stats.max_blocked_ns.exchange(0, std::memory_order_relaxed);
-    if (!polls) {
-      continue;
-    }
-    const char* name = i < kSiteCount ? kSites[i].name : "other";
-    const bool blocking = i < kSiteCount && kSites[i].blocks && g_site_state[i].blocking.load(std::memory_order_relaxed);
-    line += fmt::format(" {}:polls={} blocks={} woken={} spurious={} timeouts={} missed={} failed={} blocked_ms={:.1f} "
-                        "max_ms={:.2f} blocking={}",
-                        name, polls, blocks, woken, spurious, timeouts, missed, failed, double(blocked_ns) * 1e-6,
-                        double(max_ns) * 1e-6, blocking ? 1 : 0);
-  }
-  REXLOG_INFO("[DEBUG_SAULO][PerfGpuWait]{}", line.empty() ? " idle" : line);
-}
-
-}  // namespace crackdown::debug_saulo
-
-#else
-
-namespace crackdown::debug_saulo {
-void LogFenceWaitStats() {}
-}  // namespace crackdown::debug_saulo
 
 #endif  // _WIN32 || __linux__

@@ -2,7 +2,6 @@ Adapted from patches/sdk/0022-gpu-shared-memory-lock-free-validity.patch in Unow
 Copyright (c) 2026, Jerrod (Unowa001). BSD 3-Clause License, see packaging/licenses/THIRD-PARTY-LICENSES.txt.
 
 diff --git a/include/rex/graphics/shared_memory.h b/include/rex/graphics/shared_memory.h
-index a92a7df..4420407 100644
 --- a/include/rex/graphics/shared_memory.h
 +++ b/include/rex/graphics/shared_memory.h
 @@ -148,6 +148,12 @@ class SharedMemory {
@@ -18,55 +17,10 @@ index a92a7df..4420407 100644
    bool EnsureHostGpuMemoryAllocated(uint32_t start, uint32_t length);
    uint32_t host_gpu_memory_sparse_granularity_log2_ = UINT32_MAX;
    std::vector<uint64_t> host_gpu_memory_sparse_allocated_;
-@@ -239,4 +245,8 @@ class SharedMemory {
-   void UnlinkWatchRange(WatchRange* range);
- };
- 
-+// DEBUG_SAULO: logs the shared memory request, upload and invalidation counters per frame, then
-+// resets them.
-+void DebugSauloReportSharedMemory(uint64_t frames);
-+
- }  // namespace rex::graphics
-diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
-index 9cde13b..726f3fd 100644
---- a/src/graphics/command_processor.cpp
-+++ b/src/graphics/command_processor.cpp
-@@ -32,6 +32,7 @@
- #include <rex/graphics/guest_wake.h>
- #include <rex/graphics/pipeline/texture/info.h>
- #include <rex/graphics/sampler_info.h>
-+#include <rex/graphics/shared_memory.h>
- #include <rex/graphics/xenos.h>
- #include <rex/logging.h>
- #include <rex/math.h>
-@@ -251,19 +252,21 @@ void DebugSauloReportCommandProcessor() {
-     return;
-   }
-   stats.last_report_ns = now;
-+  const uint64_t swaps = DebugSauloTake(stats.swaps);
-   const uint64_t calls = DebugSauloTake(stats.wait_reg_mem);
-   const uint64_t waits = DebugSauloTake(stats.wait_reg_mem_waits);
-   REXGPU_INFO(
-       "[DEBUG_SAULO][PerfCommandProcessor] swaps={} idle_waits={} idle_polls={} idle_background_polls={} "
-       "idle_ms={:.1f} idle_blocks={} idle_block_ms={:.1f} idle_work_wakes={} idle_empty_wakes={} wait_reg_mem={} "
-       "wait_reg_mem_waits={} wait_reg_mem_ms={:.1f} read_pointer_writebacks={} scratch_writebacks={}",
--      DebugSauloTake(stats.swaps), DebugSauloTake(stats.idle_waits), DebugSauloTake(stats.idle_polls),
-+      swaps, DebugSauloTake(stats.idle_waits), DebugSauloTake(stats.idle_polls),
-       DebugSauloTake(stats.idle_background_polls), double(DebugSauloTake(stats.idle_ns)) * 1e-6,
-       DebugSauloTake(stats.idle_blocks), double(DebugSauloTake(stats.idle_block_ns)) * 1e-6,
-       DebugSauloTake(stats.idle_work_wakes), DebugSauloTake(stats.idle_empty_wakes), calls, waits,
-       double(DebugSauloTake(stats.wait_reg_mem_ns)) * 1e-6, DebugSauloTake(stats.read_pointer_writebacks),
-       DebugSauloTake(stats.scratch_writebacks));
-   DebugSauloReportWaitRegMem(calls, waits);
-+  DebugSauloReportSharedMemory(swaps);
- }
- 
- }  // namespace
 diff --git a/src/graphics/shared_memory.cpp b/src/graphics/shared_memory.cpp
-index 2ed1501..90aeb42 100644
 --- a/src/graphics/shared_memory.cpp
 +++ b/src/graphics/shared_memory.cpp
-@@ -10,18 +10,61 @@
+@@ -10,16 +10,25 @@
   */
  
  #include <algorithm>
@@ -80,7 +34,6 @@ index 2ed1501..90aeb42 100644
 +#include <rex/cvar.h>
  #include <rex/dbg.h>
  #include <rex/graphics/shared_memory.h>
-+#include <rex/logging.h>
  #include <rex/math.h>
  #include <rex/memory.h>
  
@@ -92,43 +45,8 @@ index 2ed1501..90aeb42 100644
 +
  namespace rex::graphics {
  
-+namespace {
-+
-+// DEBUG_SAULO: shared memory counters for the performance report.
-+struct DebugSauloSharedMemoryStats {
-+  std::atomic<uint64_t> requests{0};
-+  std::atomic<uint64_t> requests_lock_free{0};
-+  std::atomic<uint64_t> upload_pages{0};
-+  std::atomic<uint64_t> invalidations{0};
-+  std::atomic<uint64_t> invalidated_pages{0};
-+};
-+DebugSauloSharedMemoryStats debug_saulo_shared_memory_stats;
-+
-+}  // namespace
-+
-+void DebugSauloReportSharedMemory(uint64_t frames) {
-+  DebugSauloSharedMemoryStats& stats = debug_saulo_shared_memory_stats;
-+  const double frame_count = double(std::max<uint64_t>(frames, 1));
-+  const double page_kb = double(rex::memory::page_size()) / 1024.0;
-+  const uint64_t requests = stats.requests.exchange(0, std::memory_order_relaxed);
-+  const uint64_t lock_free = stats.requests_lock_free.exchange(0, std::memory_order_relaxed);
-+  const uint64_t upload_pages = stats.upload_pages.exchange(0, std::memory_order_relaxed);
-+  const uint64_t invalidations = stats.invalidations.exchange(0, std::memory_order_relaxed);
-+  const uint64_t invalidated_pages = stats.invalidated_pages.exchange(0, std::memory_order_relaxed);
-+  REXGPU_INFO(
-+      "[DEBUG_SAULO][PerfSharedMemory] requests_per_frame={:.0f} lock_free_per_frame={:.0f} "
-+      "lock_free_pct={:.1f} upload_kb_per_frame={:.0f} invalidations_per_frame={:.1f} "
-+      "invalidated_kb_per_frame={:.0f}",
-+      double(requests) / frame_count, double(lock_free) / frame_count,
-+      requests ? 100.0 * double(lock_free) / double(requests) : 0.0,
-+      double(upload_pages) * page_kb / frame_count, double(invalidations) / frame_count,
-+      double(invalidated_pages) * page_kb / frame_count);
-+}
-+
  SharedMemory::SharedMemory(memory::Memory& memory) : memory_(memory) {
-   page_size_log2_ = rex::log2_ceil(uint32_t(rex::memory::page_size()));
- }
-@@ -337,10 +380,60 @@ void SharedMemory::UnlinkWatchRange(WatchRange* range) {
+@@ -337,10 +346,58 @@ void SharedMemory::UnlinkWatchRange(WatchRange* range) {
    watch_range_first_free_ = range;
  }
  
@@ -181,26 +99,13 @@ index 2ed1501..90aeb42 100644
    if (ranges == nullptr || !count) {
      return true;
    }
-+  debug_saulo_shared_memory_stats.requests.fetch_add(1, std::memory_order_relaxed);
 +  if (AreRangesValidLockFree(ranges, count)) {
-+    debug_saulo_shared_memory_stats.requests_lock_free.fetch_add(1, std::memory_order_relaxed);
 +    return true;
 +  }
  
    // Some texture or buffer is empty, for example - safe to draw in this case.
    std::vector<std::pair<uint32_t, uint32_t>>& merged_ranges = request_ranges_merged_;
-@@ -466,6 +559,10 @@ bool SharedMemory::RequestRanges(const std::pair<uint32_t, uint32_t>* ranges, si
-     return true;
-   }
- 
-+  for (const std::pair<uint32_t, uint32_t>& upload_range : upload_ranges_) {
-+    debug_saulo_shared_memory_stats.upload_pages.fetch_add(upload_range.second,
-+                                                           std::memory_order_relaxed);
-+  }
-   return UploadRanges(upload_ranges_);
- }
- 
-@@ -495,6 +592,9 @@ std::pair<uint32_t, uint32_t> SharedMemory::MemoryInvalidationCallback(
+@@ -495,6 +552,9 @@ std::pair<uint32_t, uint32_t> SharedMemory::MemoryInvalidationCallback(
  
    auto global_lock = global_critical_region_.Acquire();
  
@@ -210,7 +115,7 @@ index 2ed1501..90aeb42 100644
    if (!exact_range) {
      // Check if a somewhat wider range (up to 256 KB with 4 KB pages) can be
      // invalidated - if no GPU-written data nearby that was not intended to be
-@@ -515,7 +615,18 @@ std::pair<uint32_t, uint32_t> SharedMemory::MemoryInvalidationCallback(
+@@ -515,6 +575,14 @@ std::pair<uint32_t, uint32_t> SharedMemory::MemoryInvalidationCallback(
        page_last =
            (page_last & ~uint32_t(63)) + (std::max(rex::tzcnt(gpu_written_end), uint8_t(1)) - 1);
      }
@@ -223,13 +128,9 @@ index 2ed1501..90aeb42 100644
 +      page_last = std::min(page_last, page_last_written | (expand_pages - 1));
 +    }
    }
-+  debug_saulo_shared_memory_stats.invalidations.fetch_add(1, std::memory_order_relaxed);
-+  debug_saulo_shared_memory_stats.invalidated_pages.fetch_add(page_last - page_first + 1,
-+                                                              std::memory_order_relaxed);
  
    for (uint32_t i = block_first; i <= block_last; ++i) {
-     uint64_t invalidate_bits = UINT64_MAX;
-@@ -525,7 +636,10 @@ std::pair<uint32_t, uint32_t> SharedMemory::MemoryInvalidationCallback(
+@@ -525,7 +593,10 @@ std::pair<uint32_t, uint32_t> SharedMemory::MemoryInvalidationCallback(
      if (i == block_last && (page_last & 63) != 63) {
        invalidate_bits &= (uint64_t(1) << ((page_last & 63) + 1)) - 1;
      }

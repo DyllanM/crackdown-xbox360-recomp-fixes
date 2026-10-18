@@ -2,7 +2,6 @@ Adapted from patches/sdk/0021-d3d12-async-submission.patch in Unowa001/crackdown
 Copyright (c) 2026, Jerrod (Unowa001). BSD 3-Clause License, see packaging/licenses/THIRD-PARTY-LICENSES.txt.
 
 diff --git a/include/rex/graphics/d3d12/command_processor.h b/include/rex/graphics/d3d12/command_processor.h
-index 5ca95cd..aca63c9 100644
 --- a/include/rex/graphics/d3d12/command_processor.h
 +++ b/include/rex/graphics/d3d12/command_processor.h
 @@ -14,8 +14,10 @@
@@ -50,7 +49,6 @@ index 5ca95cd..aca63c9 100644
  
    // Viewport info caching - avoids redundant GetHostViewportInfo recalculation
 diff --git a/include/rex/graphics/d3d12/deferred_command_list.h b/include/rex/graphics/d3d12/deferred_command_list.h
-index 7f1eb7f..84cdea3 100644
 --- a/include/rex/graphics/d3d12/deferred_command_list.h
 +++ b/include/rex/graphics/d3d12/deferred_command_list.h
 @@ -33,6 +33,9 @@ class DeferredCommandList {
@@ -64,10 +62,9 @@ index 7f1eb7f..84cdea3 100644
  
    D3D12_RECT* ClearDepthStencilViewAllocatedRects(D3D12_CPU_DESCRIPTOR_HANDLE depth_stencil_view,
 diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
-index 430a3ee..7426269 100644
 --- a/src/graphics/d3d12/command_processor.cpp
 +++ b/src/graphics/d3d12/command_processor.cpp
-@@ -54,6 +54,17 @@ REXCVAR_DEFINE_BOOL(d3d12_submit_on_primary_buffer_end, true, "GPU/D3D12",
+@@ -47,6 +47,17 @@ REXCVAR_DEFINE_BOOL(d3d12_submit_on_primary_buffer_end, true, "GPU/D3D12",
                      "Submit command list when PM4 primary buffer ends")
      .lifecycle(rex::cvar::Lifecycle::kHotReload);
  
@@ -84,36 +81,8 @@ index 430a3ee..7426269 100644
 +
  namespace rex::graphics::d3d12 {
  
- namespace {
-@@ -84,6 +95,9 @@ struct DebugSauloD3D12Stats {
-   uint64_t pipeline_waits = 0;
-   uint64_t pipeline_waits_ready = 0;
-   uint64_t pipeline_wait_us = 0;
-+  uint64_t async_draw_splits = 0;
-+  uint64_t async_swap_wait_ns = 0;
-+  uint64_t async_queue_max = 0;
-   int64_t last_report_ns = 0;
- };
- DebugSauloD3D12Stats debug_saulo_d3d12_stats;
-@@ -109,12 +123,15 @@ void DebugSauloReportD3D12() {
-       "[DEBUG_SAULO][PerfD3D12] frames={} submissions_per_frame={:.2f} early={} background={} frame_waits={} "
-       "frame_wait_ms={:.1f} queue_waits={} queue_wait_ms={:.1f} await_readback_sync={} await_readback_miss={} "
-       "await_memexport={} await_memexport_realloc={} resolves_per_frame={:.2f} readback_copies={} "
--      "readback_over_limit={} queries_begun={} queries_ended={} queries_completed={} queries_forced_drains={}",
-+      "readback_over_limit={} queries_begun={} queries_ended={} queries_completed={} queries_forced_drains={} "
-+      "async_draw_splits={} async_swap_wait_ms={:.1f} async_swap_wait_us_per_frame={:.0f} async_queue_max={}",
-       stats.frames, double(stats.submissions) / frames, stats.early_submissions, stats.background_submissions,
-       stats.frame_waits, double(stats.frame_wait_ns) * 1e-6, stats.queue_waits, double(stats.queue_wait_ns) * 1e-6,
-       stats.await_readback_sync, stats.await_readback_miss, stats.await_memexport, stats.await_memexport_realloc,
-       double(stats.resolves) / frames, stats.readback_copies, stats.readback_over_limit, stats.queries_begun,
--      stats.queries_ended, stats.queries_completed, stats.queries_forced_drains);
-+      stats.queries_ended, stats.queries_completed, stats.queries_forced_drains, stats.async_draw_splits,
-+      double(stats.async_swap_wait_ns) * 1e-6, double(stats.async_swap_wait_ns) * 1e-3 / frames,
-+      stats.async_queue_max);
-   REXGPU_INFO(
-       "[DEBUG_SAULO][PerfPipelines] created_on_processor={} created_on_processor_ms={:.1f} queued_for_threads={} "
-       "translated_on_processor={} submission_waits={} submission_wait_ms={:.1f} draws_without_pipeline={} "
-@@ -1706,11 +1723,16 @@ bool D3D12CommandProcessor::SetupContext() {
+ // Generated with `xb buildshaders`.
+@@ -1623,11 +1634,16 @@ bool D3D12CommandProcessor::SetupContext() {
    // Just not to expose uninitialized memory.
    std::memset(&system_constants_, 0, sizeof(system_constants_));
  
@@ -130,7 +99,7 @@ index 430a3ee..7426269 100644
    InvalidateAllVertexBufferResidency();
    ShutdownOcclusionQueryResources();
  
-@@ -2394,6 +2416,17 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint3
+@@ -2307,6 +2323,16 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type, uint3
    SCOPE_profile_cpu_f("gpu");
  #endif  // XE_GPU_FINE_GRAINED_DRAW_SCOPES
  
@@ -140,7 +109,6 @@ index 430a3ee..7426269 100644
 +    uint32_t draws_per_submission = REXCVAR_GET(d3d12_async_submission_draws);
 +    if (draws_per_submission && ++draws_since_submission_ >= draws_per_submission &&
 +        !active_occlusion_query_.valid && CanEndSubmissionImmediately()) {
-+      ++debug_saulo_d3d12_stats.async_draw_splits;
 +      EndSubmission(false);
 +    }
 +  }
@@ -148,7 +116,7 @@ index 430a3ee..7426269 100644
    ID3D12Device* device = GetD3D12Provider().GetDevice();
    const RegisterFile& regs = *register_file_;
  
-@@ -3583,12 +3616,16 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
+@@ -3460,12 +3486,16 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
      // happens between Xenia submissions.
      ID3D12CommandAllocator* command_allocator =
          command_allocator_writable_first_->command_allocator;
@@ -168,10 +136,10 @@ index 430a3ee..7426269 100644
 +      ID3D12CommandList* execute_command_lists[] = {command_list_};
 +      direct_queue->ExecuteCommandLists(1, execute_command_lists);
 +    }
-     ++debug_saulo_d3d12_stats.submissions;
      command_allocator_writable_first_->last_usage_submission = submission_current_;
      if (command_allocator_submitted_last_) {
-@@ -3603,7 +3640,13 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
+       command_allocator_submitted_last_->next = command_allocator_writable_first_;
+@@ -3479,7 +3509,13 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
        command_allocator_writable_last_ = nullptr;
      }
  
@@ -186,22 +154,20 @@ index 430a3ee..7426269 100644
  
      submission_open_ = false;
  
-@@ -3612,6 +3655,14 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
+@@ -3488,6 +3524,12 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
      queue_operations_done_since_submission_signal_ = false;
    }
  
 +  if (is_swap && async_submission_enabled_) {
 +    // The presenter submits its own work reading the guest output to the queue once this returns,
 +    // so the frame's commands must be on the queue first.
-+    const int64_t debug_saulo_start = DebugSauloNowNs();
 +    AwaitAsyncSubmissions();
-+    debug_saulo_d3d12_stats.async_swap_wait_ns += uint64_t(DebugSauloNowNs() - debug_saulo_start);
 +  }
 +
    if (is_closing_frame) {
      if (REXCVAR_GET(clear_memory_page_state) && shared_memory_) {
        shared_memory_->SetSystemPageBlocksValidWithGpuDataWritten();
-@@ -3657,6 +3708,101 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
+@@ -3533,6 +3575,97 @@ bool D3D12CommandProcessor::EndSubmission(bool is_swap) {
    return true;
  }
  
@@ -246,15 +212,11 @@ index 430a3ee..7426269 100644
 +    commands = std::make_unique<DeferredCommandList>(*this);
 +  }
 +  commands->SwapStream(deferred_command_list_);
-+  size_t queue_size;
 +  {
 +    std::lock_guard<std::mutex> lock(async_submission_mutex_);
 +    async_submission_queue_.push_back({std::move(commands), command_allocator, submission});
-+    queue_size = async_submission_queue_.size();
 +  }
 +  async_submission_work_cv_.notify_one();
-+  debug_saulo_d3d12_stats.async_queue_max =
-+      std::max<uint64_t>(debug_saulo_d3d12_stats.async_queue_max, queue_size);
 +}
 +
 +void D3D12CommandProcessor::AwaitAsyncSubmissions() {

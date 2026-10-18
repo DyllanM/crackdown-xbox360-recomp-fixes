@@ -2,7 +2,6 @@ Adapted from patches/sdk/0024-gpu-draw-state-memo.patch in Unowa001/crackdown-re
 Copyright (c) 2026, Jerrod (Unowa001). BSD 3-Clause License, see packaging/licenses/THIRD-PARTY-LICENSES.txt.
 
 diff --git a/include/rex/graphics/d3d12/command_processor.h b/include/rex/graphics/d3d12/command_processor.h
-index aca63c9..e4f476a 100644
 --- a/include/rex/graphics/d3d12/command_processor.h
 +++ b/include/rex/graphics/d3d12/command_processor.h
 @@ -781,6 +781,16 @@ class D3D12CommandProcessor : public CommandProcessor {
@@ -23,10 +22,9 @@ index aca63c9..e4f476a 100644
    std::vector<uint32_t> current_sampler_bindless_indices_pixel_;
  
 diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
-index 7426269..f0e7196 100644
 --- a/src/graphics/d3d12/command_processor.cpp
 +++ b/src/graphics/d3d12/command_processor.cpp
-@@ -1898,6 +1898,7 @@ void D3D12CommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
+@@ -1809,6 +1809,7 @@ void D3D12CommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
    } else if (index >= XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0 &&
               index <= XE_GPU_REG_SHADER_CONSTANT_FETCH_31_5) {
      cbuffer_binding_fetch_.up_to_date = false;
@@ -34,7 +32,7 @@ index 7426269..f0e7196 100644
      if (texture_cache_ != nullptr) {
        texture_cache_->TextureFetchConstantWritten((index - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0) /
                                                    6);
-@@ -1976,6 +1977,7 @@ void D3D12CommandProcessor::WriteRegistersFromMem(uint32_t start_index, uint32_t
+@@ -1887,6 +1888,7 @@ void D3D12CommandProcessor::WriteRegistersFromMem(uint32_t start_index, uint32_t
        end_index <= XE_GPU_REG_SHADER_CONSTANT_FETCH_31_5) {
      memory::copy_and_swap(register_file_->values + start_index, base, num_registers);
      cbuffer_binding_fetch_.up_to_date = false;
@@ -42,7 +40,7 @@ index 7426269..f0e7196 100644
      uint32_t first_fetch_dword = start_index - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0;
      uint32_t last_fetch_dword = end_index - XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0;
      if (texture_cache_) {
-@@ -3532,6 +3534,7 @@ bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
+@@ -3402,6 +3404,7 @@ bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
      cbuffer_binding_float_pixel_.up_to_date = false;
      cbuffer_binding_bool_loop_.up_to_date = false;
      cbuffer_binding_fetch_.up_to_date = false;
@@ -50,25 +48,22 @@ index 7426269..f0e7196 100644
      current_shared_memory_binding_is_uav_.reset();
      if (bindless_resources_used_) {
        cbuffer_binding_descriptor_indices_vertex_.up_to_date = false;
-@@ -4511,7 +4514,17 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
+@@ -4374,7 +4377,13 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
        vertex_shader->GetSamplerBindingsAfterTranslation();
    size_t texture_count_vertex = textures_vertex.size();
    size_t sampler_count_vertex = samplers_vertex.size();
+-  if (sampler_count_vertex) {
 +  bool sampler_memo_enabled = RenderTargetCache::IsDrawStateMemoEnabled();
 +  int32_t anisotropic_override_value = REXCVAR_GET(anisotropic_override);
 +  bool samplers_vertex_unchanged =
 +      sampler_memo_enabled && sampler_memo_shader_vertex_ == vertex_shader &&
 +      sampler_memo_fetch_generation_vertex_ == fetch_constants_generation_ &&
 +      sampler_memo_anisotropic_override_vertex_ == anisotropic_override_value;
-   if (sampler_count_vertex) {
-+    ++(samplers_vertex_unchanged ? DebugSauloDrawStateMemo().sampler_hits
-+                                 : DebugSauloDrawStateMemo().sampler_misses);
-+  }
 +  if (sampler_count_vertex && !samplers_vertex_unchanged) {
      if (current_sampler_layout_uid_vertex_ != sampler_layout_uid_vertex) {
        current_sampler_layout_uid_vertex_ = sampler_layout_uid_vertex;
        cbuffer_binding_descriptor_indices_vertex_.up_to_date = false;
-@@ -4528,6 +4541,9 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
+@@ -4391,6 +4400,9 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
          current_samplers_vertex_[i] = parameters;
        }
      }
@@ -78,23 +73,20 @@ index 7426269..f0e7196 100644
    }
  
    // Get textures and samplers used by the pixel shader, check if the last used
-@@ -4543,7 +4559,15 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
+@@ -4406,7 +4418,11 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
      texture_count_pixel = textures_pixel->size();
      samplers_pixel = &pixel_shader->GetSamplerBindingsAfterTranslation();
      sampler_count_pixel = samplers_pixel->size();
+-    if (sampler_count_pixel) {
 +    bool samplers_pixel_unchanged =
 +        sampler_memo_enabled && sampler_memo_shader_pixel_ == pixel_shader &&
 +        sampler_memo_fetch_generation_pixel_ == fetch_constants_generation_ &&
 +        sampler_memo_anisotropic_override_pixel_ == anisotropic_override_value;
-     if (sampler_count_pixel) {
-+      ++(samplers_pixel_unchanged ? DebugSauloDrawStateMemo().sampler_hits
-+                                  : DebugSauloDrawStateMemo().sampler_misses);
-+    }
 +    if (sampler_count_pixel && !samplers_pixel_unchanged) {
        if (current_sampler_layout_uid_pixel_ != sampler_layout_uid_pixel) {
          current_sampler_layout_uid_pixel_ = sampler_layout_uid_pixel;
          cbuffer_binding_descriptor_indices_pixel_.up_to_date = false;
-@@ -4560,6 +4584,9 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
+@@ -4423,6 +4439,9 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
            bindful_samplers_written_pixel_ = false;
          }
        }
@@ -105,10 +97,9 @@ index 7426269..f0e7196 100644
    } else {
      texture_layout_uid_pixel = PipelineCache::kLayoutUIDEmpty;
 diff --git a/src/graphics/d3d12/render_target_cache.cpp b/src/graphics/d3d12/render_target_cache.cpp
-index 9507832..0c5fa8e 100644
 --- a/src/graphics/d3d12/render_target_cache.cpp
 +++ b/src/graphics/d3d12/render_target_cache.cpp
-@@ -3916,6 +3916,21 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
+@@ -3916,6 +3916,20 @@ void D3D12RenderTargetCache::PerformTransfersAndResolveClears(
      const Transfer::Rectangle* resolve_clear_rectangle, uint32_t cutout_render_targets,
      bool depth_only_cutout) {
    assert_true(GetPath() == Path::kHostRenderTargets);
@@ -123,7 +114,6 @@ index 9507832..0c5fa8e 100644
 +      }
 +    }
 +    if (!any_transfers) {
-+      ++DebugSauloDrawStateMemo().transfer_skips;
 +      return;
 +    }
 +  }

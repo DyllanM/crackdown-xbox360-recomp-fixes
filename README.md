@@ -32,7 +32,12 @@ Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, wit
 
 ### Performance
 - **Frame rates**: 30 (Original), 60 (Recommended, the default), 90, 120, 144, 165, 240 and **Unlimited**. Game speed stays the same at every rate.
-- **Improved frame pacing**, and runtime and performance optimizations on both platforms that cut CPU waiting on the GPU.
+- **Missed frames no longer slow the game down**: at 30 and 60 FPS the game catches up, so game time keeps its normal speed when the PC misses a frame. 90 FPS and higher, including Unlimited, are paced by the host for even frame delivery.
+- **Lower CPU overhead and better scaling at high frame rates**, with improved performance in demanding city scenes and better use of modern CPUs.
+- **Faster graphics command processing**, with less repeated GPU state work, fewer redundant memory uploads, and less render-target and texture-sampler work per draw.
+- **Direct3D 12 submission on its own thread** (Windows): graphics submission runs independently of the main GPU command processor thread. On CPUs with eight or more logical processors, the heavy graphics host threads are also scheduled away from the first two.
+- **Less waiting on the GPU**, with reduced synchronization and fence overhead on both platforms.
+- **Improved audio synchronization** and audio worker thread behavior.
 - **Compatibility fixes** for the recompiled game's graphics and audio.
 
 ### Quality of Life
@@ -69,7 +74,7 @@ The launcher accepts the disc image (`.iso`) or a folder holding the files extra
 
 ### Windows
 
-1. Download **Crackdown-v0.3.1-windows-x64.zip** from the [latest release](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **Crackdown-v0.4.0-windows-x64.zip** from the [latest release](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **crackdown.exe**. The launcher opens.
 3. On the **Play** page click **Install from disc image...** and pick your Crackdown `.iso`, or click **Install from folder...** for extracted disc files. You can also drop either on the launcher window.
 4. Wait until **Ready to play** appears. The game files are copied into the `game` folder next to the program.
@@ -83,7 +88,7 @@ Windows may warn the first time you run the program, because the release is not 
 
 **Experimental.** Crackdown Recompiled includes a native Linux x86_64 build using ReXGlue's Vulkan backend. It does not use Proton or Wine, and the AppImage contains the same platform-neutral game and launcher features as the Windows build, including the keyboard and mouse implementation. It is built and checked by automated scripts and tests, but this release has not yet been fully validated on real Linux PCs or Steam Deck hardware, and keyboard and mouse input has been tested manually on Windows only. Reports are welcome.
 
-1. Download **CrackdownRecompiled-v0.3.1-x86_64.AppImage** from the release and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
+1. Download **CrackdownRecompiled-v0.4.0-x86_64.AppImage** from the release and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
 2. Run it, then install your disc image from the **Play** page as on Windows. The game files go in a `game` folder next to the AppImage.
 3. On a Steam Deck, do this in **Desktop Mode**, then add the AppImage with **Games > Add a Non-Steam Game to My Library** and play it from **Game Mode**.
 
