@@ -1,0 +1,86 @@
+diff --git a/src/audio/audio_system.cpp b/src/audio/audio_system.cpp
+--- a/src/audio/audio_system.cpp
++++ b/src/audio/audio_system.cpp
+@@ -113,6 +113,20 @@
+   constexpr auto kCallbackInterval = std::chrono::microseconds(5333 * 39 / 40);
+   std::chrono::steady_clock::time_point next_callback[kMaximumClientCount] = {};
+ 
++  // DEBUG_SAULO: callback counters for the performance report, logged every few seconds by this thread.
++  struct DebugSauloAudioStats {
++    uint64_t callbacks = 0;
++    uint64_t wait_timeouts = 0;
++    uint64_t paced = 0;
++    uint64_t bursts = 0;
++    std::chrono::nanoseconds paced_time{0};
++    std::chrono::nanoseconds callback_time{0};
++    std::chrono::nanoseconds max_gap{0};
++  } debug_saulo_stats;
++  auto debug_saulo_last_report = std::chrono::steady_clock::now();
++  auto debug_saulo_last_callback = debug_saulo_last_report;
++  constexpr auto kDebugSauloBurstGap = std::chrono::milliseconds(2);
++
+   // Main run loop.
+   uint32_t diag_pump_count = 0;
+   while (worker_running_) {
+@@ -127,6 +141,7 @@
+     }
+ 
+     if (result.first == rex::thread::WaitResult::kTimeout) {
++      ++debug_saulo_stats.wait_timeouts;
+       if (diag_pump_count < 5) {
+         REXAPU_NOISY_DEBUG("AudioWorker: WaitAny timed out (no semaphore signals)");
+       }
+@@ -156,9 +171,12 @@
+         if (REXCVAR_GET(audio_callback_pacing)) {
+           auto now = std::chrono::steady_clock::now();
+           if (now < next_callback[index]) {
++            const auto delay_start = now;
+             SDL_DelayNS(uint64_t(
+                 std::chrono::duration_cast<std::chrono::nanoseconds>(next_callback[index] - now).count()));
+             now = std::chrono::steady_clock::now();
++            ++debug_saulo_stats.paced;
++            debug_saulo_stats.paced_time += now - delay_start;
+           }
+           // Keeping the schedule stops a late wake from lowering the average rate. After a stall, restart
+           // from now instead of catching up in a burst.
+@@ -169,9 +187,19 @@
+                        client_callback, client_callback_arg, index);
+         }
+         SCOPE_profile_cpu_i("apu", "rex::audio::AudioSystem->client_callback");
++        const auto debug_saulo_callback_start = std::chrono::steady_clock::now();
++        const auto debug_saulo_gap = debug_saulo_callback_start - debug_saulo_last_callback;
++        debug_saulo_last_callback = debug_saulo_callback_start;
++        debug_saulo_stats.max_gap = std::max(debug_saulo_stats.max_gap,
++                                             std::chrono::duration_cast<std::chrono::nanoseconds>(debug_saulo_gap));
++        if (debug_saulo_gap < kDebugSauloBurstGap) {
++          ++debug_saulo_stats.bursts;
++        }
+         uint64_t args[] = {client_callback_arg};
+         function_dispatcher_->Execute(worker_thread_->thread_state(), client_callback, args,
+                                       rex::countof(args));
++        ++debug_saulo_stats.callbacks;
++        debug_saulo_stats.callback_time += std::chrono::steady_clock::now() - debug_saulo_callback_start;
+         if (diag_pump_count < 10) {
+           REXAPU_DEBUG("AudioWorker: callback returned for client {}", index);
+         }
+@@ -183,6 +211,20 @@
+       pumped = true;
+     }
+ 
++    if (const auto now = std::chrono::steady_clock::now(); now - debug_saulo_last_report >= std::chrono::seconds(5)) {
++      const double seconds = std::chrono::duration<double>(now - debug_saulo_last_report).count();
++      REXAPU_INFO(
++          "[DEBUG_SAULO][PerfAudio] callbacks_per_s={:.1f} bursts={} max_gap_ms={:.2f} paced={} paced_ms={:.1f} "
++          "callback_ms={:.1f} wait_timeouts={}",
++          double(debug_saulo_stats.callbacks) / seconds, debug_saulo_stats.bursts,
++          std::chrono::duration<double, std::milli>(debug_saulo_stats.max_gap).count(), debug_saulo_stats.paced,
++          std::chrono::duration<double, std::milli>(debug_saulo_stats.paced_time).count(),
++          std::chrono::duration<double, std::milli>(debug_saulo_stats.callback_time).count(),
++          debug_saulo_stats.wait_timeouts);
++      debug_saulo_stats = {};
++      debug_saulo_last_report = now;
++    }
++
+     if (!worker_running_) {
+       break;
+     }

@@ -14,6 +14,7 @@
 #include <rex/ui/window.h>
 #include <rex/ui/windowed_app_context.h>
 
+#include "debug_saulo_perf.h"
 #include "platform.h"
 #include "settings.h"
 #include "window_title.h"
@@ -124,8 +125,30 @@ GuestFrameStats GetGuestFrameStats() {
 
 }  // namespace crackdown
 
+namespace {
+
+// The D3D thread sub_826CE0C8 presents the last frame again after 30 ms without a swap; that swap is no new frame.
+constexpr uint32_t kRepeatPresentSite = 0x826CE148;
+thread_local bool t_repeat_present = false;
+
+}  // namespace
+
+REX_EXTERN(__imp__sub_826BCA98);
+
+// The swap builder; its call to VdSwap is the only one.
+REX_HOOK_RAW(sub_826BCA98) {
+  t_repeat_present = uint32_t(ctx.lr) == kRepeatPresentSite;
+  __imp__sub_826BCA98(ctx, base);
+  t_repeat_present = false;
+}
+
 // Named like the SDK's export, so REX_EXTERN would call this hook again: the original is called by its entry point.
 REX_HOOK_RAW(__imp__VdSwap) {
   rex::ppc::HostToGuestFunction<rex::kernel::xboxkrnl::VdSwap_entry>(ctx, base);
+  if (t_repeat_present) {
+    crackdown::debug_saulo::RecordRepeatedPresent();
+    return;
+  }
   crackdown::CountGuestFrame();
+  crackdown::debug_saulo::RecordGuestFrame();
 }

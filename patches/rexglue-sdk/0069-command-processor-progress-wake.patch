@@ -1,0 +1,161 @@
+diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
+--- a/src/graphics/command_processor.cpp
++++ b/src/graphics/command_processor.cpp
+@@ -10,7 +10,9 @@
+  */
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <bitset>
++#include <chrono>
+ #include <cinttypes>
+ #include <cmath>
+ #include <cstring>
+@@ -91,6 +93,57 @@
+ 
+ namespace rex::graphics {
+ 
++namespace {
++
++// DEBUG_SAULO: command processor counters for the performance report, logged at a swap every few seconds.
++struct DebugSauloCommandProcessorStats {
++  std::atomic<uint64_t> swaps{0};
++  std::atomic<uint64_t> idle_waits{0};
++  std::atomic<uint64_t> idle_polls{0};
++  std::atomic<uint64_t> idle_background_polls{0};
++  std::atomic<uint64_t> idle_ns{0};
++  std::atomic<uint64_t> wait_reg_mem{0};
++  std::atomic<uint64_t> wait_reg_mem_waits{0};
++  std::atomic<uint64_t> wait_reg_mem_ns{0};
++  std::atomic<uint64_t> read_pointer_writebacks{0};
++  std::atomic<uint64_t> scratch_writebacks{0};
++  int64_t last_report_ns = 0;
++};
++DebugSauloCommandProcessorStats debug_saulo_cp_stats;
++
++int64_t DebugSauloNowNs() {
++  return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
++      .count();
++}
++
++uint64_t DebugSauloTake(std::atomic<uint64_t>& counter) {
++  return counter.exchange(0, std::memory_order_relaxed);
++}
++
++void DebugSauloReportCommandProcessor() {
++  DebugSauloCommandProcessorStats& stats = debug_saulo_cp_stats;
++  stats.swaps.fetch_add(1, std::memory_order_relaxed);
++  const int64_t now = DebugSauloNowNs();
++  if (!stats.last_report_ns) {
++    stats.last_report_ns = now;
++  }
++  if (now - stats.last_report_ns < 5'000'000'000) {
++    return;
++  }
++  stats.last_report_ns = now;
++  REXGPU_INFO(
++      "[DEBUG_SAULO][PerfCommandProcessor] swaps={} idle_waits={} idle_polls={} idle_background_polls={} "
++      "idle_ms={:.1f} wait_reg_mem={} wait_reg_mem_waits={} wait_reg_mem_ms={:.1f} read_pointer_writebacks={} "
++      "scratch_writebacks={}",
++      DebugSauloTake(stats.swaps), DebugSauloTake(stats.idle_waits), DebugSauloTake(stats.idle_polls),
++      DebugSauloTake(stats.idle_background_polls), double(DebugSauloTake(stats.idle_ns)) * 1e-6,
++      DebugSauloTake(stats.wait_reg_mem), DebugSauloTake(stats.wait_reg_mem_waits),
++      double(DebugSauloTake(stats.wait_reg_mem_ns)) * 1e-6, DebugSauloTake(stats.read_pointer_writebacks),
++      DebugSauloTake(stats.scratch_writebacks));
++}
++
++}  // namespace
++
+ using namespace rex::graphics::xenos;
+ 
+ namespace {
+@@ -270,6 +323,8 @@
+       // A short yield burst catches back-to-back submissions, then sleep on the write pointer
+       // event so the core is free for the guest threads feeding the ring.
+       constexpr uint32_t kIdleYieldCount = 32;
++      const int64_t debug_saulo_idle_start = DebugSauloNowNs();
++      debug_saulo_cp_stats.idle_waits.fetch_add(1, std::memory_order_relaxed);
+       PrepareForWait();
+       bool poll_background_work = PollBackgroundWork();
+       uint32_t loop_count = 0;
+@@ -284,12 +339,16 @@
+                             std::chrono::milliseconds(poll_background_work ? 1 : 5));
+         }
+         write_ptr_index = write_ptr_index_.load();
++        debug_saulo_cp_stats.idle_polls.fetch_add(1, std::memory_order_relaxed);
+         if (poll_background_work) {
++          debug_saulo_cp_stats.idle_background_polls.fetch_add(1, std::memory_order_relaxed);
+           poll_background_work = PollBackgroundWork();
+         }
+       } while (worker_running_ && pending_fns_.empty() &&
+                (write_ptr_index == 0xBAADF00D || read_ptr_index_ == write_ptr_index));
+       ReturnFromWait();
++      debug_saulo_cp_stats.idle_ns.fetch_add(uint64_t(DebugSauloNowNs() - debug_saulo_idle_start),
++                                             std::memory_order_relaxed);
+       if (!worker_running_ || !pending_fns_.empty()) {
+         continue;
+       }
+@@ -304,6 +363,8 @@
+     if (read_ptr_writeback_ptr_) {
+       memory::store_and_swap<uint32_t>(memory_->TranslatePhysical(read_ptr_writeback_ptr_),
+                                        read_ptr_index_);
++      WakeGuestWordWaiters(memory_->TranslatePhysical(read_ptr_writeback_ptr_));
++      debug_saulo_cp_stats.read_pointer_writebacks.fetch_add(1, std::memory_order_relaxed);
+     }
+ 
+     // FIXME: We're supposed to process the WAIT_UNTIL register at this point,
+@@ -379,6 +440,7 @@
+   // CP_RB_RPTR_ADDR Ring Buffer Read Pointer Address 0x70C
+   // ptr = RB_RPTR_ADDR, pointer to write back the address to.
+   read_ptr_writeback_ptr_ = ptr;
++  REXGPU_INFO("[DEBUG_SAULO][GpuWriteback] read pointer written back to physical {:08X}", ptr);
+   // CP_RB_CNTL Ring Buffer Control 0x704
+   // block_size = RB_BLKSZ, log2 of number of quadwords read between updates of
+   //              the read pointer.
+@@ -425,6 +487,8 @@
+       uint32_t scratch_addr = regs.values[XE_GPU_REG_SCRATCH_ADDR];
+       uint32_t mem_addr = scratch_addr + (scratch_reg * 4);
+       memory::store_and_swap<uint32_t>(memory_->TranslatePhysical(mem_addr), value);
++      WakeGuestWordWaiters(memory_->TranslatePhysical(mem_addr));
++      debug_saulo_cp_stats.scratch_writebacks.fetch_add(1, std::memory_order_relaxed);
+     }
+   } else {
+     switch (index) {
+@@ -1010,6 +1074,7 @@
+   }
+ #endif
+   rex::perf::Profiler::Flip();
++  DebugSauloReportCommandProcessor();
+ 
+   // Xenia-specific VdSwap hook.
+   // VdSwap will post this to tell us we need to swap the screen/fire an
+@@ -1060,6 +1125,9 @@
+   constexpr uint32_t kYieldPollCount = 16;
+   uint32_t unmatched_poll_count = 0;
+   bool matched = false;
++  const int64_t debug_saulo_wait_start = DebugSauloNowNs();
++  bool debug_saulo_waited = false;
++  debug_saulo_cp_stats.wait_reg_mem.fetch_add(1, std::memory_order_relaxed);
+   do {
+     uint32_t value = 0;
+     if (is_memory) {
+@@ -1100,6 +1168,7 @@
+         break;
+     }
+     if (!matched) {
++      debug_saulo_waited = true;
+       PollBackgroundWork();
+       // Wait.
+       if (wait >= 0x100) {
+@@ -1124,6 +1193,11 @@
+       }
+     }
+   } while (!matched);
++  if (debug_saulo_waited) {
++    debug_saulo_cp_stats.wait_reg_mem_waits.fetch_add(1, std::memory_order_relaxed);
++    debug_saulo_cp_stats.wait_reg_mem_ns.fetch_add(uint64_t(DebugSauloNowNs() - debug_saulo_wait_start),
++                                                   std::memory_order_relaxed);
++  }
+ 
+   return true;
+ }

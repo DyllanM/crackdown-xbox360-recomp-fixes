@@ -54,6 +54,7 @@ set(CRACKDOWN_SOURCES
     src/achievements_overlay.cpp
     src/aspect_render.cpp
     src/audio_mixer_priority.cpp
+    src/audio_guest_sync.cpp
     src/audio_pcm_firewall.cpp
     src/audio_wave_timeout.cpp
     src/cache_device.cpp
@@ -62,6 +63,7 @@ set(CRACKDOWN_SOURCES
     src/cheat_menu_overlay.cpp
     src/cheats.cpp
     src/crt_native.cpp
+    src/debug_saulo_perf.cpp
     src/frame_counter.cpp
     src/frame_pacing.cpp
     src/frame_rate.cpp

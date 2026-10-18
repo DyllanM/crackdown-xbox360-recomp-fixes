@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -82,6 +83,52 @@ constexpr FrameStep MeasuredFrameStep(double seconds) {
   const double clamped = std::clamp(seconds, kMinMeasuredFrameSeconds, kMaxMeasuredFrameSeconds);
   return {clamped, float(clamped), clamped * kOriginalFrameRate};
 }
+
+// A step already known to be within bounds (CompensatedStepClock clamps its own result), so it is packaged without
+// MeasuredFrameStep's fixed 1/30 s ceiling.
+constexpr FrameStep StepFromSeconds(double seconds) {
+  return {seconds, float(seconds), seconds * kOriginalFrameRate};
+}
+
+// 30 and 60 present at the guest vblank, so a slow frame is already free of host pacing; this measures how far
+// behind it fell and compensates instead of letting a fixed per-call step turn the slowdown into slow motion. A
+// frame close to a whole number of the rate's own steps (within the tolerance) snaps to exactly that many, so
+// timer jitter does not perturb an on-time frame; a frame further off advances by the real interval, clamped to at
+// most kMaxCompensatedSteps steps so one huge stall cannot become one huge physics step. The gap between the step
+// taken and the real interval carries to the next frame (clamped to half a step), so sustained slow frames still
+// advance game time at the real rate instead of drifting into permanent debt, and a stall past the cap drops its
+// excess instead of being owed back. Adapted from Geometry Wars Retro Evolved 2's GameDeltaClock.
+inline constexpr int kMaxCompensatedSteps = 3;
+
+class CompensatedStepClock {
+ public:
+  enum class Kind { kSnapped, kCompensated, kClamped };
+
+  struct Result {
+    double seconds;
+    Kind kind;
+  };
+
+  Result Take(double interval, double step) {
+    const double target = interval + owed_;
+    const double steps = target / step;
+    const double nearest = std::clamp(std::round(steps), 1.0, double(kMaxCompensatedSteps));
+    const double cap = kMaxCompensatedSteps * step;
+    const bool snap = std::fabs(steps - nearest) <= kSnapTolerance;
+    double delta = snap ? nearest * step : target;
+    const bool clamped = delta > cap || delta < kMinMeasuredFrameSeconds;
+    delta = std::clamp(delta, kMinMeasuredFrameSeconds, cap);
+    owed_ = target > cap ? 0.0 : std::clamp(target - delta, -0.5 * step, 0.5 * step);
+    return {delta, snap ? Kind::kSnapped : (clamped ? Kind::kClamped : Kind::kCompensated)};
+  }
+
+  void Reset() { owed_ = 0.0; }
+  double owed() const { return owed_; }
+
+ private:
+  static constexpr double kSnapTolerance = 0.2;
+  double owed_ = 0.0;
+};
 
 // Splits a running total into whole units and the fraction carried to the next frame.
 constexpr uint32_t TakeWhole(double& total) {

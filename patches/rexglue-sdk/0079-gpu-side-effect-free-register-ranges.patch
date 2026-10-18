@@ -1,0 +1,97 @@
+Adapted from patches/sdk/0023-gpu-fast-register-ranges.patch in Unowa001/crackdown-recomp.
+Copyright (c) 2026, Jerrod (Unowa001). BSD 3-Clause License, see packaging/licenses/THIRD-PARTY-LICENSES.txt.
+
+diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
+index 726f3fd..c5a0692 100644
+--- a/src/graphics/command_processor.cpp
++++ b/src/graphics/command_processor.cpp
+@@ -144,6 +144,15 @@ struct DebugSauloCommandProcessorStats {
+ };
+ DebugSauloCommandProcessorStats debug_saulo_cp_stats;
+ 
++// DEBUG_SAULO: register write counters, command processor thread only.
++struct DebugSauloRegisterStats {
++  uint64_t type0_ranged_dwords = 0;
++  uint64_t type0_single_dwords = 0;
++  uint64_t copied_dwords = 0;
++  uint64_t range_dwords_one_by_one = 0;
++};
++DebugSauloRegisterStats debug_saulo_register_stats;
++
+ int64_t DebugSauloNowNs() {
+   return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+       .count();
+@@ -266,6 +275,14 @@ void DebugSauloReportCommandProcessor() {
+       double(DebugSauloTake(stats.wait_reg_mem_ns)) * 1e-6, DebugSauloTake(stats.read_pointer_writebacks),
+       DebugSauloTake(stats.scratch_writebacks));
+   DebugSauloReportWaitRegMem(calls, waits);
++  const DebugSauloRegisterStats registers = debug_saulo_register_stats;
++  debug_saulo_register_stats = {};
++  const double frames = double(std::max<uint64_t>(swaps, 1));
++  REXGPU_INFO(
++      "[DEBUG_SAULO][PerfRegisters] type0_ranged_per_frame={:.0f} type0_single_per_frame={:.0f} "
++      "copied_per_frame={:.0f} range_one_by_one_per_frame={:.0f}",
++      double(registers.type0_ranged_dwords) / frames, double(registers.type0_single_dwords) / frames,
++      double(registers.copied_dwords) / frames, double(registers.range_dwords_one_by_one) / frames);
+   DebugSauloReportSharedMemory(swaps);
+ }
+ 
+@@ -300,10 +317,18 @@ std::bitset<RegisterFile::kRegisterCount> BuildKnownRegisterSet() {
+ 
+ const std::bitset<RegisterFile::kRegisterCount> kKnownRegisters = BuildKnownRegisterSet();
+ 
+-// Render-state registers: no write side effects in any backend.
+-bool IsContextRegisterRange(uint32_t first_index, uint32_t last_index) {
+-  constexpr uint32_t kFirstContextRegister = 0x2000;
+-  return first_index >= kFirstContextRegister && last_index < XE_GPU_REG_SHADER_CONSTANT_000_X;
++// Writes to these only store the value. WriteRegister has side effects for the scratch registers,
++// COHER_STATUS_HOST and the gamma ramp ports, and the backends for the shader constants.
++bool IsSideEffectFreeRegisterRange(uint32_t first_index, uint32_t last_index) {
++  static_assert(XE_GPU_REG_DC_LUT_30_COLOR == XE_GPU_REG_DC_LUT_RW_INDEX + 3);
++  auto overlaps = [&](uint32_t first, uint32_t last) {
++    return first_index <= last && last_index >= first;
++  };
++  return last_index < RegisterFile::kRegisterCount &&
++         !overlaps(XE_GPU_REG_SHADER_CONSTANT_000_X, XE_GPU_REG_SHADER_CONSTANT_LOOP_31) &&
++         !overlaps(XE_GPU_REG_SCRATCH_REG0, XE_GPU_REG_SCRATCH_REG7) &&
++         !overlaps(XE_GPU_REG_COHER_STATUS_HOST, XE_GPU_REG_COHER_STATUS_HOST) &&
++         !overlaps(XE_GPU_REG_DC_LUT_RW_INDEX, XE_GPU_REG_DC_LUT_30_COLOR);
+ }
+ 
+ // Runs of these only store values (the backends invalidate constant buffers
+@@ -315,7 +340,7 @@ bool IsBulkWritableRegisterRange(uint32_t first_index, uint32_t count) {
+     return false;
+   }
+   uint32_t last_index = first_index + count - 1;
+-  return IsContextRegisterRange(first_index, last_index) ||
++  return IsSideEffectFreeRegisterRange(first_index, last_index) ||
+          (first_index >= XE_GPU_REG_SHADER_CONSTANT_000_X &&
+           last_index <= XE_GPU_REG_SHADER_CONSTANT_511_W) ||
+          (first_index >= XE_GPU_REG_SHADER_CONSTANT_FETCH_00_0 &&
+@@ -752,10 +777,13 @@ void CommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
+ 
+ void CommandProcessor::WriteRegistersFromMem(uint32_t start_index, uint32_t* base,
+                                              uint32_t num_registers) {
+-  if (num_registers && IsContextRegisterRange(start_index, start_index + num_registers - 1)) {
++  if (num_registers &&
++      IsSideEffectFreeRegisterRange(start_index, start_index + num_registers - 1)) {
+     memory::copy_and_swap(register_file_->values + start_index, base, num_registers);
++    debug_saulo_register_stats.copied_dwords += num_registers;
+     return;
+   }
++  debug_saulo_register_stats.range_dwords_one_by_one += num_registers;
+   for (uint32_t i = 0; i < num_registers; ++i) {
+     uint32_t data = memory::load_and_swap<uint32_t>(base + i);
+     WriteRegister(start_index + i, data);
+@@ -966,9 +994,11 @@ bool CommandProcessor::ExecutePacketType0(memory::RingBuffer* reader, uint32_t p
+   uint32_t base_index = (packet & 0x7FFF);
+   uint32_t write_one_reg = (packet >> 15) & 0x1;
+   if (!write_one_reg && IsBulkWritableRegisterRange(base_index, count)) {
++    debug_saulo_register_stats.type0_ranged_dwords += count;
+     WriteRegisterRangeFromRing(reader, base_index, count);
+     return true;
+   }
++  debug_saulo_register_stats.type0_single_dwords += count;
+   for (uint32_t m = 0; m < count; m++) {
+     uint32_t reg_data = reader->ReadAndSwap<uint32_t>();
+     uint32_t target_index = write_one_reg ? base_index : base_index + m;

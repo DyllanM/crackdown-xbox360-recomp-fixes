@@ -1,0 +1,169 @@
+diff --git a/include/rex/graphics/d3d12/pipeline_cache.h b/include/rex/graphics/d3d12/pipeline_cache.h
+--- a/include/rex/graphics/d3d12/pipeline_cache.h
++++ b/include/rex/graphics/d3d12/pipeline_cache.h
+@@ -108,6 +108,10 @@
+     return reinterpret_cast<const Pipeline*>(handle)->state.load(std::memory_order_acquire);
+   }
+ 
++  // Waits until a pipeline being created in the background is done, for at most budget_us microseconds, which the time
++  // spent is taken off. Returns whether the pipeline is ready to use.
++  bool WaitForPipeline(void* handle, int64_t& budget_us) const;
++
+  private:
+   REXPACKEDSTRUCT(ShaderStoredHeader, {
+     uint64_t ucode_data_hash;
+@@ -356,6 +360,8 @@
+   struct Pipeline {
+     // nullptr if creation has failed.
+     std::atomic<ID3D12PipelineState*> state{nullptr};
++    // Set once creation has been attempted, when state is final.
++    std::atomic<bool> creation_done{false};
+     std::atomic<ID3D12RootSignature*> root_signature{nullptr};
+     PipelineRuntimeDescription description;
+     D3D12Shader::D3D12Translation* pending_vertex_shader = nullptr;
+diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
+--- a/src/graphics/d3d12/command_processor.cpp
++++ b/src/graphics/d3d12/command_processor.cpp
+@@ -44,6 +44,12 @@
+                     "Read render-to-texture results on the CPU")
+     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+ 
++REXCVAR_DEFINE_INT32(async_shader_wait_ms, 0, "GPU/D3D12",
++                     "With async_shader_compilation, how long a frame may wait in total for pipelines being created "
++                     "in the background before drawing without them; 0 never waits")
++    .range(0, 1000)
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
+ REXCVAR_DEFINE_BOOL(d3d12_submit_on_primary_buffer_end, true, "GPU/D3D12",
+                     "Submit command list when PM4 primary buffer ends")
+     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+@@ -75,6 +81,9 @@
+   uint64_t queries_completed = 0;
+   uint64_t queries_forced_drains = 0;
+   uint64_t draws_without_pipeline = 0;
++  uint64_t pipeline_waits = 0;
++  uint64_t pipeline_waits_ready = 0;
++  uint64_t pipeline_wait_us = 0;
+   int64_t last_report_ns = 0;
+ };
+ DebugSauloD3D12Stats debug_saulo_d3d12_stats;
+@@ -108,14 +117,19 @@
+       stats.queries_ended, stats.queries_completed, stats.queries_forced_drains);
+   REXGPU_INFO(
+       "[DEBUG_SAULO][PerfPipelines] created_on_processor={} created_on_processor_ms={:.1f} queued_for_threads={} "
+-      "translated_on_processor={} submission_waits={} submission_wait_ms={:.1f} draws_without_pipeline={}",
++      "translated_on_processor={} submission_waits={} submission_wait_ms={:.1f} draws_without_pipeline={} "
++      "draw_waits={} draw_waits_ready={} draw_wait_ms={:.1f}",
+       pipelines.created_on_processor, double(pipelines.created_on_processor_ns) * 1e-6, pipelines.queued_for_threads,
+       pipelines.translated_on_processor, pipelines.submission_waits, double(pipelines.submission_wait_ns) * 1e-6,
+-      stats.draws_without_pipeline);
++      stats.draws_without_pipeline, stats.pipeline_waits, stats.pipeline_waits_ready,
++      double(stats.pipeline_wait_us) * 1e-3);
+   stats = {};
+   stats.last_report_ns = now;
+ }
+ 
++// What is left of this frame's wait for pipelines created in the background (async_shader_wait_ms).
++int64_t pipeline_wait_budget_us = 0;
++
+ }  // namespace
+ 
+ // Generated with `xb buildshaders`.
+@@ -2505,8 +2519,20 @@
+   }
+   if (REXCVAR_GET(async_shader_compilation) &&
+       pipeline_cache_->GetD3D12PipelineByHandle(pipeline_handle) == nullptr) {
+-    ++debug_saulo_d3d12_stats.draws_without_pipeline;
+-    return true;
++    // Pipelines are created on several threads at once, so most are ready within a few milliseconds; the draw is only
++    // skipped when its pipeline is not ready within the frame's budget.
++    bool ready = false;
++    if (pipeline_wait_budget_us > 0) {
++      const int64_t budget_before_us = pipeline_wait_budget_us;
++      ready = pipeline_cache_->WaitForPipeline(pipeline_handle, pipeline_wait_budget_us);
++      ++debug_saulo_d3d12_stats.pipeline_waits;
++      debug_saulo_d3d12_stats.pipeline_waits_ready += ready;
++      debug_saulo_d3d12_stats.pipeline_wait_us += uint64_t(budget_before_us - pipeline_wait_budget_us);
++    }
++    if (!ready) {
++      ++debug_saulo_d3d12_stats.draws_without_pipeline;
++      return true;
++    }
+   }
+ 
+   // Update the textures - this may bind pipelines.
+@@ -3415,6 +3441,7 @@
+   // submission), do something like dropping the draw command that wanted to
+   // open the frame.
+   if (is_opening_frame) {
++    pipeline_wait_budget_us = int64_t(REXCVAR_GET(async_shader_wait_ms)) * 1000;
+     // Update the completed frame index, also obtaining the actual completed
+     // frame number (since the CPU may be actually less than 3 frames behind)
+     // before reclaiming resources tracked with the frame number.
+diff --git a/src/graphics/d3d12/pipeline_cache.cpp b/src/graphics/d3d12/pipeline_cache.cpp
+--- a/src/graphics/d3d12/pipeline_cache.cpp
++++ b/src/graphics/d3d12/pipeline_cache.cpp
+@@ -20,6 +20,7 @@
+ #include <deque>
+ #include <mutex>
+ #include <set>
++#include <thread>
+ #include <utility>
+ #include <vector>
+ 
+@@ -670,6 +671,7 @@
+       } else {
+         new_pipeline->state.store(CreateD3D12Pipeline(pipeline_runtime_description),
+                                   std::memory_order_release);
++        new_pipeline->creation_done.store(true, std::memory_order_release);
+       }
+       ++pipelines_created;
+     }
+@@ -1065,6 +1067,7 @@
+   } else {
+     const uint64_t debug_saulo_start = DebugSauloNowNs();
+     new_pipeline->state.store(CreateD3D12Pipeline(runtime_description), std::memory_order_release);
++    new_pipeline->creation_done.store(true, std::memory_order_release);
+     ++debug_saulo_pipeline_stats.created_on_processor;
+     debug_saulo_pipeline_stats.created_on_processor_ns += DebugSauloNowNs() - debug_saulo_start;
+   }
+@@ -3266,6 +3269,7 @@
+       pipeline_to_create->state.store(CreateD3D12Pipeline(runtime_description),
+                                       std::memory_order_release);
+     }
++    pipeline_to_create->creation_done.store(true, std::memory_order_release);
+ 
+     // Pipeline created - the thread is not busy anymore, safe to set the
+     // completion event if needed (at the next iteration, or in some other
+@@ -3292,11 +3296,31 @@
+     PipelineRuntimeDescription runtime_description;
+     if (!PrepareRuntimeDescriptionForQueuedCreation(pipeline_to_create, runtime_description)) {
+       pipeline_to_create->state.store(nullptr, std::memory_order_release);
++      pipeline_to_create->creation_done.store(true, std::memory_order_release);
+       continue;
+     }
+     pipeline_to_create->state.store(CreateD3D12Pipeline(runtime_description),
+                                     std::memory_order_release);
++    pipeline_to_create->creation_done.store(true, std::memory_order_release);
+   }
+ }
+ 
++bool PipelineCache::WaitForPipeline(void* handle, int64_t& budget_us) const {
++  const Pipeline* pipeline = reinterpret_cast<const Pipeline*>(handle);
++  const auto start = std::chrono::steady_clock::now();
++  auto spent_us = [start] {
++    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start)
++        .count();
++  };
++  while (!pipeline->creation_done.load(std::memory_order_acquire)) {
++    if (spent_us() >= budget_us) {
++      budget_us = 0;
++      return false;
++    }
++    std::this_thread::sleep_for(std::chrono::microseconds(100));
++  }
++  budget_us = std::max<int64_t>(0, budget_us - spent_us());
++  return pipeline->state.load(std::memory_order_acquire) != nullptr;
++}
++
+ }  // namespace rex::graphics::d3d12
