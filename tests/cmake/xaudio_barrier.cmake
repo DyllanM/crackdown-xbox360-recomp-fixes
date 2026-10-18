@@ -1,0 +1,1 @@
+crackdown_add_test(xaudio_barrier_tests SOURCES xaudio_barrier_tests.cpp)

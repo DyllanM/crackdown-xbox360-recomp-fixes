@@ -1,4 +1,4 @@
-// The title's C runtime memcpy and memset as host routines where that cannot change what the guest sees.
+// The title's C runtime memcpy, memmove and memset as host routines where that cannot change what the guest sees.
 
 #include <bit>
 #include <cstdint>
@@ -37,6 +37,27 @@ REX_HOOK_RAW(sub_82ABDF90) {
   }
   const uint64_t saved = std::byteswap(ctx.r3.u64);
   std::memcpy(rex::memory::GuestPtr<uint8_t*>(base, ctx.r1.u32 - 8), &saved, sizeof(saved));
+  std::memmove(rex::memory::GuestPtr<uint8_t*>(base, dest), rex::memory::GuestPtr<const uint8_t*>(base, source), size);
+}
+
+// memmove: r3 destination, r4 source, r5 size; returns the destination. Below the source (signed compare) it tail-calls
+// memcpy, which leaves the destination at r1 - 8; otherwise it copies backward.
+REX_EXTERN(__imp__sub_82AB5F10);
+REX_HOOK_RAW(sub_82AB5F10) {
+  const uint32_t dest = ctx.r3.u32;
+  const uint32_t source = ctx.r4.u32;
+  const uint32_t size = ctx.r5.u32;
+  if (dest == source) {
+    return;
+  }
+  if (!IsNativeRange(dest, size) || !IsNativeRange(source, size)) {
+    __imp__sub_82AB5F10(ctx, base);
+    return;
+  }
+  if (ctx.r3.s32 < ctx.r4.s32) {
+    const uint64_t saved = std::byteswap(ctx.r3.u64);
+    std::memcpy(rex::memory::GuestPtr<uint8_t*>(base, ctx.r1.u32 - 8), &saved, sizeof(saved));
+  }
   std::memmove(rex::memory::GuestPtr<uint8_t*>(base, dest), rex::memory::GuestPtr<const uint8_t*>(base, source), size);
 }
 

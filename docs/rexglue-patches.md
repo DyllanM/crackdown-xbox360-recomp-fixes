@@ -5,8 +5,8 @@ result is installed over the stock files in `tools/rexglue`. The game compiles a
 must not move virtual functions or data members of classes the generated game code uses.
 
 `NNNN-name.patch` applies on both platforms, `NNNN-name.windows.patch` only on Windows and `NNNN-name.linux.patch` only on
-Linux. Numbers are unique and patches apply in name order; gaps are fine. 39 patches are common, 12 are Windows only and
-13 are Linux only, so 51 apply on Windows and 52 on Linux. Patches 0005 and 0052 change the code generator and are the
+Linux. Numbers are unique and patches apply in name order; gaps are fine. 45 patches are common, 16 are Windows only and
+13 are Linux only, so 61 apply on Windows and 58 on Linux. Patches 0005 and 0052 change the code generator and are the
 reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
 
 | # | Platform | Purpose |
@@ -65,9 +65,19 @@ reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the run
 | 0065 | all | 0059 recovers only free or reserved pages away from the faulting thread's stack and its guard pages, never a page adjacent to one it already recovered, and nothing when the stack is unknown |
 | 0066 | all | a read-only open that finds nothing (`NO_SUCH_FILE`, `OBJECT_NAME_NOT_FOUND`) and a path without a device (the kernel has no current directory) log at debug instead of warning/error; other `NtCreateFile` failures and unknown devices still warn |
 | 0067 | linux | when SDL video cannot start, stderr also gets the SDL error and the graphical-session hint (DISPLAY for X11, WAYLAND_DISPLAY for Wayland) before the normal failure exit |
+| 0068 | all | the guest time base is read without a lock: it runs at one ratio from the last ratio change, so reading it no longer takes the clock mutex on every `mftb` |
+| 0069 | all | the command processor also wakes `WaitOnAddress`/futex waiters after its read pointer and scratch register writebacks (the Direct3D ring waits in `src/gpu_fence_wait.cpp`) |
+| 0070 | all | on Windows a missing host file is not searched for again by listing its folder after the exact name was not found (names are case-insensitive); `NtQueryFullAttributesFile` translates its path once |
+| 0073 | windows | an occlusion query index is reused only after the pending query that held it has its result |
+| 0078 | all | a shared memory request whose pages are all valid and allocated returns without the lock (the invalidation callback clears valid bits with release stores); `gpu_invalidation_expand_pages` (16; 64 is the original whole block) limits the pages a CPU write drops to an aligned group |
+| 0079 | all | the register block copy covers every range without write side effects, not only render state: everything but the shader constants, scratch registers, `COHER_STATUS_HOST` and the gamma ramp ports |
+| 0080 | all | `gpu_draw_state_memo`: an update claiming the same render target ranges as the previous one, with the ownership unchanged since, skips the ownership walk |
+| 0081 | windows | `d3d12_async_submission`: a "D3D12 Submission" thread replays, executes and signals the recorded submissions in order, and a swap waits for it to drain; `d3d12_async_submission_draws` (2000) also ends a submission between draws outside occlusion queries |
+| 0082 | windows | D3D12 half of 0080: draws without transfers or clears skip the transfer pass, and sampler parameters are recomputed only when the shader, a fetch constant or `anisotropic_override` changed |
+| 0083 | windows | `gpu_host_threads_avoid_cpu0`: the command processor and submission threads run on the process's CPUs except 0 and 1 when it has at least 8 in one processor group |
 
-Patches 0054 to 0058 are adapted from Unowa001/crackdown-recomp (BSD 3-Clause, notice in
-[THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).
+Patches 0054 to 0058 and 0078 to 0083 and the hooks in `src/audio_guest_sync.cpp` are adapted from Unowa001/crackdown-recomp
+(BSD 3-Clause, notice in [THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).
 
 The AppImage runtime has its own pin and patch in `patches/appimage-runtime` (see [linux.md](linux.md)).
 

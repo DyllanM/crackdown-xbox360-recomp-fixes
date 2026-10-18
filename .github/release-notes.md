@@ -1,30 +1,20 @@
-# Crackdown Recompiled v0.3.0
+# Crackdown Recompiled v0.4.0
 
 Crackdown for Xbox 360 as a native PC recompilation, with enhanced graphics, high frame rates, modern display support, keyboard and mouse support, a full launcher, offline achievements and language selection. It runs natively on Windows, and experimentally on Linux and Steam Deck as an AppImage.
 
 ## What's New
 
-### Cheats
-- A new **Cheats** page in the launcher and an in-game Cheats menu on **F10**, usable with the keyboard or a controller.
-- 7 cheats, all off by default:
-  - **Player**: Infinite Health, Movement Speed (2x to 10x), Jump Height (2x to 10x) and No Fall Damage.
-  - **Weapons**: Infinite Ammo.
-  - **Vehicle**: Infinite Vehicle Health and Vehicle Speed (2x to 6x).
-- Values chosen in the launcher are saved and are the starting values each time the game runs. Changes made with **F10** last for that session only and never overwrite the launcher settings.
-- Cheats apply to the local player in single player.
+### Performance
+- **Lower CPU overhead** across the graphics command processor, with better scaling at high frame rates, improved performance in demanding city scenes and better use of modern CPUs.
+- **Direct3D 12 submission on its own thread** (Windows): graphics submission runs independently of the main GPU command processor thread. On CPUs with eight or more logical processors, the heavy graphics host threads are also scheduled away from the first two.
+- **Faster command processing**: shared-memory checks no longer take a lock in the common case, CPU writes invalidate less GPU memory, and most register writes are handled in bulk, while registers with side effects keep their exact behavior.
+- **Less repeated GPU state work**: draw state is reused when nothing changed, and redundant render-target ownership, transfer and texture-sampler work is skipped. Fewer memory uploads are repeated.
+- **Less waiting on the GPU**, with reduced synchronization and fence overhead on both platforms.
+- **Improved audio synchronization** and audio worker thread behavior.
 
-### Achievements
-- A new **Achievements** page in the launcher lists every achievement with its icon, description, Gamerscore and unlock status.
-- **F7** opens the in-game overlay, which scrolls and closes with the keyboard or a controller, so you can check your progress without leaving the game.
-- Everything stays offline.
-
-### Graphics: Exposure and Brightness
-- Fixed exposure and brightness that could stay stale or incorrect in some scenes.
-- The fix uses a capped fast readback (resolves up to 256 KiB), so it keeps the frame rate of the previous release.
-
-### Stability: Save Loading
-- Fixed the crash that could happen after **Loading Saved Game**.
-- The fix is deliberately narrow: it handles only that identified case, and other memory faults are not suppressed.
+### Frame Pacing
+- **30 and 60 FPS**: when the PC misses a frame, the game catches up, so game time keeps its normal speed instead of slowing down.
+- **90 FPS and higher, including Unlimited**: frames are paced by the host for even frame delivery.
 
 Keyboard and mouse input is adapted from [Unowa001/crackdown-recomp](https://github.com/Unowa001/crackdown-recomp) (BSD 3-Clause); its notice is in the `licenses` folder of the ZIP and in the AppImage.
 
@@ -49,11 +39,6 @@ Keyboard and mouse input is adapted from [Unowa001/crackdown-recomp](https://git
 - **Windowed or Borderless Fullscreen**, **F11** to switch while playing, monitor selection, and window sizes that follow the aspect ratio.
 - **Window title options**: frame rate and render resolution.
 - Anti-aliasing (FXAA), Multisampling and Texture filtering options.
-
-## Performance
-- **Frame rate**: 30 (Original), 60 (Recommended, the default), 90, 120, 144, 165, 240 or Unlimited. Game speed stays the same at every rate.
-- Improved frame pacing, and runtime optimizations that cut CPU waiting on the GPU on both platforms.
-- Compatibility fixes for the recompiled game's graphics and audio.
 
 ## Quality of Life
 - **Skip intro**: starts directly at the title screen.
@@ -93,13 +78,13 @@ Requirements:
 - **Linux**: 64-bit x86 Linux with glibc 2.31 or newer (such as Ubuntu 20.04 or later), a Vulkan driver, and an X11 or Wayland desktop.
 
 ## Downloads
-**Windows**: **Crackdown-v0.3.0-windows-x64.zip**
+**Windows**: **Crackdown-v0.4.0-windows-x64.zip**
 1. Unzip it anywhere you can write to.
 2. Run **crackdown.exe**.
 3. On the launcher's **Play** page click **Install from disc image...** and pick your own Crackdown `.iso`, or **Install from folder...** for extracted disc files.
 4. Press **PLAY**.
 
-**Linux and Steam Deck (Experimental)**: **CrackdownRecompiled-v0.3.0-x86_64.AppImage**
+**Linux and Steam Deck (Experimental)**: **CrackdownRecompiled-v0.4.0-x86_64.AppImage**
 1. Put it in a folder you can write to and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
 2. Run it and install your own disc image from the **Play** page, as on Windows. The game files go in a `game` folder next to the AppImage.
 3. On a Steam Deck, do this in **Desktop Mode**, then add the AppImage with **Games > Add a Non-Steam Game to My Library** and play it from **Game Mode**.
@@ -108,9 +93,9 @@ Requirements:
 If the game does not start or crashes, please open an [issue](https://github.com/saulob/crackdown-xbox360-recompiled/issues) and attach the newest `crackdown_*.log` file from the `logs` folder next to the program (next to the AppImage on Linux), with a line about what you were doing. For Linux reports, please also say your distribution and graphics card, and whether you start the AppImage from Steam.
 
 ## Checksums
-SHA-256 files are published with the release for both downloads: `Crackdown-v0.3.0-windows-x64.sha256` and `CrackdownRecompiled-v0.3.0-x86_64.sha256`.
+SHA-256 files are published with the release for both downloads: `Crackdown-v0.4.0-windows-x64.sha256` and `CrackdownRecompiled-v0.4.0-x86_64.sha256`.
 
 | File | SHA-256 |
 | --- | --- |
-| `Crackdown-v0.3.0-windows-x64.zip` | `13ad37f7295aa9f0c1296afb0946553e508cd1ae2dadb9a2529304f5cf55fc21` |
-| `CrackdownRecompiled-v0.3.0-x86_64.AppImage` | `669b5a3d587232874c0df5c211527d3fb143957bd7d79f764ae92a27321fafa9` |
+| `Crackdown-v0.4.0-windows-x64.zip` | `pending` |
+| `CrackdownRecompiled-v0.4.0-x86_64.AppImage` | `pending` |

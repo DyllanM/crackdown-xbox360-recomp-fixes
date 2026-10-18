@@ -16,6 +16,8 @@
 #include <rex/ui/ui_event.h>
 #include <rex/ui/windowed_app_context.h>
 
+#include <trg/game_helpers.h>
+
 #include "achievements_input.h"
 #include "achievements_overlay.h"
 #include "aspect_ratio.h"
@@ -176,6 +178,9 @@ class CrackdownApp : public rex::ReXApp {
     REXLOG_INFO("{}", crackdown::DescribeInternalRenderResolution(
                           picture, std::max(1, std::atoi(rex::cvar::GetFlagByName("resolution_scale").c_str())),
                           std::atoi(rex::cvar::GetFlagByName("internal_render_scale").c_str())));
+#if defined(_WIN32)
+    REXLOG_INFO("Scheduling: {}", trg::TuneProcessScheduling());
+#endif
     if (runtime()) {
       MountCacheDevice(runtime()->file_system(), user_data_root());
       crackdown::InstallCrashDiagnostics(runtime()->virtual_membase());

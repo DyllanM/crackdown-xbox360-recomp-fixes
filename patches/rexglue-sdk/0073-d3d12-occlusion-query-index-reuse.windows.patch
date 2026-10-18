@@ -1,0 +1,29 @@
+diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
+--- a/src/graphics/d3d12/command_processor.cpp
++++ b/src/graphics/d3d12/command_processor.cpp
+@@ -4912,6 +4912,25 @@ bool D3D12CommandProcessor::AcquireOcclusionQueryIndex(uint32_t& host_index_out)
+   if (occlusion_query_cursor_ >= kMaxOcclusionQueries) {
+     occlusion_query_cursor_ = 0;
+   }
++  // Pending queries hold their indices in issue order, so the cursor reaches the oldest one first; its result has to be
++  // read before the index is resolved into again.
++  if (!pending_occlusion_queries_.empty() &&
++      pending_occlusion_queries_.front().host_index == occlusion_query_cursor_) {
++    if (pending_occlusion_queries_.front().submission < submission_current_) {
++      CheckSubmissionFence(pending_occlusion_queries_.front().submission);
++    }
++    if (!pending_occlusion_queries_.empty() &&
++        pending_occlusion_queries_.front().host_index == occlusion_query_cursor_) {
++      // Recorded in the open submission, so it has no result yet.
++      auto fake_sample_count = REXCVAR_GET(query_occlusion_fake_sample_count);
++      if (fake_sample_count >= 0) {
++        WriteGuestOcclusionResult(memory_->TranslatePhysical<xenos::xe_gpu_depth_sample_counts*>(
++                                      pending_occlusion_queries_.front().sample_count_address),
++                                  uint64_t(fake_sample_count));
++      }
++      pending_occlusion_queries_.pop_front();
++    }
++  }
+   host_index_out = occlusion_query_cursor_++;
+   return true;
+ }

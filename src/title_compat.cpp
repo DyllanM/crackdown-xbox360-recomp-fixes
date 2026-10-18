@@ -36,8 +36,9 @@ REX_HOOK_RAW(sub_82A49908) {
   __imp__sub_82A49908(ctx, base);
 }
 
-// Codegen hook at the spin of sub_82A50000 (config/overrides.toml). The audio workers wait there for each other
-// without a kernel wait, so one whose partner already stopped for title termination would run guest code forever.
+// Codegen hook at the spin of sub_82A50000 (config/overrides.toml), also polled by the host rendezvous in
+// audio_guest_sync.cpp. The audio workers wait there for each other without a kernel wait, so one whose partner
+// already stopped for title termination would wait forever.
 bool crackdown_audio_barrier_escape() {
   const auto* kernel = rex::system::kernel_state();
   return kernel && kernel->is_terminating_title();

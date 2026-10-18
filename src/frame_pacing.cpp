@@ -33,7 +33,6 @@ REX_EXTERN(__imp__sub_82324938);
 REX_EXTERN(__imp__sub_826B1150);
 REX_EXTERN(__imp__sub_826BC568);
 REX_EXTERN(__imp__sub_826BC3D0);
-REX_EXTERN(__imp__sub_8254C568);
 
 namespace {
 
@@ -65,9 +64,23 @@ std::atomic<double> g_original_steps{crackdown::FixedFrameStep(crackdown::kDefau
 // Only the main thread runs frames.
 FrameStep g_step = crackdown::FixedFrameStep(crackdown::kDefaultFrameRate);
 crackdown::FramePacer g_pacer;
+crackdown::CompensatedStepClock g_console_clock;
+int g_console_rate = 0;
+int64_t g_console_last_ns = 0;
 double g_logical_tick_fraction = 0.0;
 double g_frame_ms_fraction = 0.0;
 int g_logged_rate = -1;
+
+// 30 and 60 both present at the guest vblank (no host pacing), so a slow frame already shows up as a longer
+// measured interval here; resets the clock on a rate change so switching rates never carries over stale debt.
+crackdown::FrameStep ConsolePacedStep(int rate, double interval) {
+  if (rate != g_console_rate) {
+    g_console_rate = rate;
+    g_console_clock.Reset();
+    return crackdown::FixedFrameStep(rate);
+  }
+  return crackdown::StepFromSeconds(g_console_clock.Take(interval, 1.0 / rate).seconds);
+}
 
 // Set by the launcher before the title starts.
 int FrameRate() {
@@ -102,10 +115,9 @@ int64_t NowNs() {
       .count();
 }
 
-// Sleeps until about a millisecond before the deadline, then yields until it, so a coarse timer cannot make the
-// frame late.
+// Sleeps until shortly before the deadline, then yields until it, so a coarse timer cannot make the frame late.
 void WaitUntil(int64_t deadline_ns) {
-  constexpr int64_t kYieldNs = 1'000'000;
+  constexpr int64_t kYieldNs = 500'000;
   const int64_t remaining = deadline_ns - NowNs();
   if (remaining > kYieldNs) {
 #if defined(_WIN32)
@@ -119,7 +131,9 @@ void WaitUntil(int64_t deadline_ns) {
       Sleep(DWORD((remaining - kYieldNs) / 1'000'000));
     }
 #else
-    std::this_thread::sleep_for(std::chrono::nanoseconds(remaining - kYieldNs));
+    std::this_thread::sleep_until(std::chrono::steady_clock::time_point(
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::nanoseconds(deadline_ns - kYieldNs))));
 #endif
   }
   while (NowNs() < deadline_ns) {
@@ -138,24 +152,30 @@ void SelectVariableStep(uint8_t* base, int rate) {
   }
 }
 
-// Picks this frame's step; host-paced rates first wait for their release time.
+// Picks this frame's step; host-paced rates first wait for their release time, 30 and 60 measure the real
+// interval since they are already paced by the guest vblank.
 void BeginFrame(int rate) {
+  const int64_t now = NowNs();
   if (crackdown::HostPacedFrameRate(rate)) {
-    const crackdown::FramePacer::Frame frame = g_pacer.Next(rate, NowNs());
+    const crackdown::FramePacer::Frame frame = g_pacer.Next(rate, now);
     WaitUntil(frame.release_ns);
     g_step = frame.step;
     g_frame_ms_fraction += g_step.seconds * 1000.0;
     g_frame_ms.store(crackdown::TakeWhole(g_frame_ms_fraction), std::memory_order_relaxed);
   } else {
-    g_step = crackdown::FixedFrameStep(rate);
+    const double interval = g_console_last_ns ? double(now - g_console_last_ns) * 1e-9 : 0.0;
+    g_console_last_ns = now;
+    g_step = ConsolePacedStep(rate, interval);
   }
   g_step_bits.store(std::bit_cast<uint32_t>(g_step.seconds_f), std::memory_order_relaxed);
   g_original_steps.store(g_step.original_steps, std::memory_order_relaxed);
 }
 
-// +16 counts the title's 1/30 s steps; it only advances it in fixed-step mode, so it keeps that rate here.
-void AdvanceLogicalTick(uint8_t* base, uint32_t timing) {
-  g_logical_tick_fraction += g_step.original_steps;
+// +16 counts the title's 1/30 s steps. The original advances it unconditionally while not suspended; this tops
+// that up to the compensated step so a missed frame's extra elapsed time still reaches it, without double-counting
+// what the original already added. The fraction never goes negative: a tick already granted is never clawed back.
+void SyncLogicalTick(uint8_t* base, uint32_t timing, uint32_t applied) {
+  g_logical_tick_fraction = std::max(0.0, g_logical_tick_fraction + g_step.original_steps - double(applied));
   if (const uint32_t whole = crackdown::TakeWhole(g_logical_tick_fraction)) {
     StoreBE32(base, timing + kLogicalTickOffset, LoadBE32(base, timing + kLogicalTickOffset) + whole);
   }
@@ -185,39 +205,35 @@ void LogFrameRate(int rate) {
 REX_HOOK_RAW(sub_826A7698) {
   const int rate = FrameRate();
   LogFrameRate(rate);
+  BeginFrame(rate);
   if (HighFrameRate(rate)) {
-    BeginFrame(rate);
     SelectVariableStep(base, rate);
   }
   __imp__sub_826A7698(ctx, base);
 }
 
-// The simulation update. Its only caller passes 1/30 s times the time scale.
+// The simulation update. Its only caller passes 1/30 s times the time scale; g_step.original_steps is exactly 1.0
+// on an on-time frame at every rate, so this is a no-op multiply unless a frame ran long or short of its target.
 REX_HOOK_RAW(sub_826A6B50) {
-  if (HighFrameRate(FrameRate())) {
-    ctx.f1.f64 = double(float(ctx.f1.f64 * g_step.original_steps));
-  }
+  ctx.f1.f64 = double(float(ctx.f1.f64 * g_step.original_steps));
   __imp__sub_826A6B50(ctx, base);
 }
 
-// With the fixed step off, the getter's measured-millisecond branch alternates between 0 and 30 ms, so the step is
-// set here: the time scale times one frame.
+// The frame delta getter. With the fixed step on (30), the original always returns timescale/30, the same value
+// g_step gives on an on-time frame, so this can replace it outright instead of only overriding the variable-step
+// rates; it is what keeps camera and animation on the same compensated clock as the simulation update.
 REX_HOOK_RAW(sub_8254C568) {
-  if (HighFrameRate(FrameRate())) {
-    ctx.f1.f64 = double(LoadBEFloat(base, kTimeScaleAddress) *
-                        std::bit_cast<float>(g_step_bits.load(std::memory_order_relaxed)));
-  } else {
-    __imp__sub_8254C568(ctx, base);
-  }
+  ctx.f1.f64 =
+      double(LoadBEFloat(base, kTimeScaleAddress) * std::bit_cast<float>(g_step_bits.load(std::memory_order_relaxed)));
 }
 
 REX_HOOK_RAW(sub_82324938) {
   const uint32_t timing = LoadBE32(base, kTimingObjectAddress);
-  const bool advance = HighFrameRate(FrameRate()) && timing && !*GuestByte(base, timing + kFixedStepOffset) &&
-                       !*GuestByte(base, timing + kSuspendedOffset);
+  const bool active = timing && !*GuestByte(base, timing + kSuspendedOffset);
+  const uint32_t before = active ? LoadBE32(base, timing + kLogicalTickOffset) : 0;
   __imp__sub_82324938(ctx, base);
-  if (advance) {
-    AdvanceLogicalTick(base, timing);
+  if (active) {
+    SyncLogicalTick(base, timing, LoadBE32(base, timing + kLogicalTickOffset) - before);
   }
 }
 
@@ -257,5 +273,5 @@ void crackdown_variable_step_frame_ms(PPCRegister& frame_ms) {
 }
 
 double crackdown::OriginalStepsPerUpdate() {
-  return HighFrameRate(FrameRate()) ? g_original_steps.load(std::memory_order_relaxed) : 1.0;
+  return g_original_steps.load(std::memory_order_relaxed);
 }
