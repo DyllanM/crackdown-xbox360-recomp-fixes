@@ -168,9 +168,9 @@ The launcher's **Achievements** page shows the same list without starting the ga
 
 ## Screenshots
 
-<img width="2553" height="1426" alt="image" src="https://github.com/user-attachments/assets/d14c97f8-2f76-40b6-aafe-295d382e9dd0" />
+<img width="2553" height="1426" alt="gameplay" src="https://github.com/user-attachments/assets/d14c97f8-2f76-40b6-aafe-295d382e9dd0" />
 
-<img width="2556" height="1435" alt="2026-10-16_23-37" src="https://github.com/user-attachments/assets/805eedd7-7dde-4a63-b18d-341102f939b1" />
+<img width="2556" height="1437" alt="gameplay" src="https://github.com/user-attachments/assets/1e8867e4-a351-4c86-b9b5-edeb35645009" />
 
 ## Reporting problems
 
