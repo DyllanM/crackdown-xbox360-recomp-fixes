@@ -27,6 +27,9 @@
 #include <rex/filesystem.h>
 #include <rex/logging.h>
 
+#include "active_log.h"
+#include "crash_report.h"
+#include "dpi.h"
 #include "relaunch_command.h"
 
 #if defined(_WIN32)
@@ -69,8 +72,8 @@ BOOL CALLBACK AddMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM user) {
   found.primary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0;
   UINT dpi_x = 0;
   UINT dpi_y = 0;
-  if (SUCCEEDED(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y)) && dpi_x) {
-    found.scale = float(dpi_x) / 96.0f;
+  if (SUCCEEDED(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y))) {
+    found.scale = DpiScaleFromDpi(dpi_x);
   }
   reinterpret_cast<std::vector<MonitorInfo>*>(user)->push_back(found);
   return TRUE;
@@ -280,6 +283,40 @@ std::filesystem::path NextLogFile(const std::filesystem::path& folder, std::stri
     }
   }
   return folder / fmt::format("{}{:03d}.log", prefix, last + 1);
+}
+
+const char* ArchitectureName() {
+#if defined(_M_ARM64)
+  return "arm64";
+#elif defined(_M_X64) || defined(__x86_64__)
+  return "x86-64";
+#elif defined(_M_IX86) || defined(__i386__)
+  return "x86";
+#else
+  return "unknown";
+#endif
+}
+
+const char* GraphicsBackendName() {
+#if defined(_WIN32)
+  return "Direct3D 12";
+#else
+  return "Vulkan";
+#endif
+}
+
+void InstallCrashReports() {
+#if defined(_WIN32)
+  const std::filesystem::path file = ActiveLogFile();
+  if (file.empty()) {
+    REXLOG_WARN("Windows crash reporting disabled: the current log file could not be resolved");
+    return;
+  }
+  std::error_code ec;
+  const std::filesystem::path absolute = std::filesystem::absolute(file, ec);
+  InstallCrashReporting(Utf8(ec ? file : absolute).c_str());
+  REXLOG_INFO("Windows crash reporting enabled for current log.");
+#endif
 }
 
 UiFontFiles FindUiFonts() {

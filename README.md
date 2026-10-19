@@ -47,9 +47,10 @@ Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, wit
 - **Language selector** with ten launcher choices: English, French, German, Italian, Spanish (Spain), Spanish (Latin America), Czech, Polish, Hungarian and Japanese.
 - **Skip intro**: starts directly at the title screen.
 - **Frame rate and render resolution in the window title**, and an **FPS counter** in the corner (toggled with **F2**).
-- **Full launcher** with an installer for your disc image or extracted files, and display, graphics and gameplay options.
+- **Full launcher** with an installer for your disc image or extracted files, and display, graphics and gameplay options. Author and project links open in the browser.
 - **Keyboard and mouse support** with mouse aiming, menu navigation and configurable mouse sensitivity, while Xbox controllers continue to work normally.
 - Portable `user_data` folder for saves, settings and caches.
+- **Diagnostics**: optional detailed logging, an **Open logs folder** button, and on Windows a crash appends a `CRASH REPORT` block to the same session log (no separate crash file or minidump).
 
 ### Platforms
 - **Windows** (primary): native build using Direct3D 12.
@@ -179,7 +180,7 @@ The launcher's **Achievements** page shows the same list without starting the ga
 
 ## Reporting problems
 
-If the game does not start or crashes, please open an [issue](https://github.com/saulob/crackdown-xbox360-recompiled/issues). Attach the newest `crackdown_*.log` file from the `logs` folder next to the program (next to the AppImage on Linux), and say what you were doing when the problem happened. For Linux reports, please also say your distribution and graphics card, and whether you start the AppImage from Steam.
+If the game does not start or crashes, please open an [issue](https://github.com/saulob/crackdown-xbox360-recompiled/issues). Attach the newest `crackdown_*.log` file from the `logs` folder next to the program (next to the AppImage on Linux), and say what you were doing when the problem happened. The launcher's **About** page opens that folder. **Detailed logging** is on by default; turned off, a normal session still writes a shorter log but discards it on exit, while a crash keeps it. After a crash on Windows the same log ends with a `CRASH REPORT` section; no separate crash file or minidump is written. For Linux reports, please also say your distribution and graphics card, and whether you start the AppImage from Steam.
 
 ## Building it yourself
 

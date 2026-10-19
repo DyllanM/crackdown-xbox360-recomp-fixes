@@ -86,6 +86,7 @@ const std::vector<std::string> kGameSettingKeys = {
     "internal_render_scale",
     "swap_post_effect",
     "crackdown_msaa_compatibility",
+    "crackdown_detailed_logging",
     "anisotropic_override",
     "mnk_mode",
     "mnk_sensitivity",
@@ -108,6 +109,9 @@ const std::vector<std::string> kWindowKeys = {
 
 // Cheats are read while the game runs, so changing one never needs a new process.
 bool IsCheatKey(std::string_view key) { return key.substr(0, 6) == "cheat_"; }
+
+// Settings the running session reads itself, so changing one never needs a new process.
+bool IsLiveKey(std::string_view key) { return IsCheatKey(key) || key == "crackdown_detailed_logging"; }
 
 bool IsWindowKey(std::string_view key) {
   return std::find(kWindowKeys.begin(), kWindowKeys.end(), key) != kWindowKeys.end();
@@ -463,7 +467,7 @@ bool GameSettings::RuntimeChanged() const {
     return found == values.end() ? std::string() : found->second;
   };
   for (const std::string& key : kGameSettingKeys) {
-    if (key != kFullscreenKey && !IsCheatKey(key) && value_of(pending_, key) != value_of(runtime_built_, key)) {
+    if (key != kFullscreenKey && !IsLiveKey(key) && value_of(pending_, key) != value_of(runtime_built_, key)) {
       return true;
     }
   }

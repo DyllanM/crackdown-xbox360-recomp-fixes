@@ -1,0 +1,43 @@
+diff --git a/include/rex/logging/api.h b/include/rex/logging/api.h
+index be0497b..de40e1c 100644
+--- a/include/rex/logging/api.h
++++ b/include/rex/logging/api.h
+@@ -80,6 +80,14 @@ void ShutdownLogging();
+  */
+ void FlushLogging();
+ 
++/**
++ * Detach and close the file sink without destroying loggers.
++ *
++ * Use before a controlled hard exit when the session log must be removed:
++ * loggers keep working on the remaining sinks and cannot recreate the file.
++ */
++void DetachFileSink();
++
+ /**
+  * Register a new log category at runtime.
+  *
+diff --git a/src/core/logging.cpp b/src/core/logging.cpp
+index 1645848..b5eebf7 100644
+--- a/src/core/logging.cpp
++++ b/src/core/logging.cpp
+@@ -295,6 +295,19 @@ void FlushLogging() {
+       entry.logger->flush();
+ }
+ 
++void DetachFileSink() {
++  std::lock_guard lock(g_mutex);
++  if (!g_file_sink)
++    return;
++  std::erase(g_extra_sinks, g_file_sink);
++  for (auto& entry : g_registry) {
++    if (entry.logger)
++      std::erase(entry.logger->sinks(), g_file_sink);
++  }
++  g_file_sink->flush();
++  g_file_sink.reset();
++}
++
+ LogCategoryId RegisterLogCategory(const char* name) {
+   std::lock_guard lock(g_mutex);
+ 

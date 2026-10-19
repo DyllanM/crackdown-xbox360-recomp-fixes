@@ -47,8 +47,9 @@ and Visual Studio's Clang, LLD, CMake, Ninja and x64 SDK environment.
 `package-release.ps1` builds into `build-release\`, stages only the allow-listed files and refuses to continue if
 the staging folder holds game files, saves, logs, settings or local paths. Nothing is published or uploaded.
 
-The launcher is the TRG library in `third_party/trg-launcher` (git submodule, pinned commit). It has no upstream
-license file; get one from its author before distributing a package.
+The launcher is the TRG library in `third_party/trg-launcher` (git submodule, pinned commit). CMake copies it to
+`<build dir>/trg-launcher-patched`, applies `patches/trg-launcher` to that copy, and builds it there, so the submodule
+checkout stays clean. It has no upstream license file; get one from its author before distributing a package.
 
 Patches with a `.windows` or `.linux` suffix apply only on that platform; unsuffixed patches apply everywhere.
 See `docs/rexglue-patches.md` for what each patch is for.

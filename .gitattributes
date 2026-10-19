@@ -10,3 +10,6 @@ packaging/linux/* text eol=lf
 
 # The AppImage runtime patch and pins are applied and hashed on Linux.
 patches/appimage-runtime/* text eol=lf
+
+# The TRG Launcher patches are applied to a build-tree copy; keep them byte-stable across checkouts.
+patches/trg-launcher/* text eol=lf

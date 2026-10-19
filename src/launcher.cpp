@@ -17,6 +17,7 @@
 #include <rex/logging.h>
 #include <rex/system/achievement_manager.h>
 #include <rex/ui/imgui_dialog.h>
+#include <rex/ui/imgui_drawer.h>
 #include <rex/ui/overlay/achievement_icon_cache.h>
 #include <rex/version.h>
 
@@ -27,6 +28,7 @@
 #include "agency_accent.h"
 #include "aspect_ratio.h"
 #include "cheats.h"
+#include "dpi.h"
 #include "frame_timing.h"
 #include "game_files.h"
 #include "graphics_adapters.h"
@@ -55,6 +57,9 @@ constexpr ImGuiConfigFlags kNavFlags = ImGuiConfigFlags_NavEnableKeyboard | ImGu
 const ImVec4 kAccent = ImVec4(kAccentRed, kAccentGreen, kAccentBlue, 1.0f);
 const ImVec4 kDeepBlue = ImVec4(0.07f, 0.18f, 0.35f, 1.0f);
 
+constexpr const char* kAuthorUrl = "https://github.com/saulob";
+constexpr const char* kRepositoryUrl = "https://github.com/saulob/crackdown-xbox360-recompiled";
+
 trg::Theme LauncherTheme() {
   trg::Theme theme = trg::Theme::Midnight().WithAccent(kAccent);
   theme.good = kDeepBlue;
@@ -68,6 +73,7 @@ trg::HeaderPainter LauncherHeader() {
 }
 
 trg::Fonts g_fonts;
+float g_font_density = 1.0f;
 
 GameFiles CheckAndLogGameFiles(const std::filesystem::path& game_dir) {
   GameFiles files = CheckGameFiles(game_dir);
@@ -85,6 +91,12 @@ struct InstallOutcome {
 
 std::string Size(int width, int height) {
   return std::to_string(width) + " \xC3\x97 " + std::to_string(height);
+}
+
+std::string DisplayUrl(const char* url) {
+  const std::string text = url;
+  const size_t scheme = text.find("://");
+  return scheme == std::string::npos ? text : text.substr(scheme + 3);
 }
 
 std::vector<trg::Option> RenderResolutionOptions(AspectRatio aspect) {
@@ -387,6 +399,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     c.note = "Play applies the changes. Save keeps them without starting.";
     c.fonts = g_fonts;
     c.branding.title = "CRACKDOWN";
+    c.branding.subtitle_segments = {
+        {"PC PORT   \xC2\xB7   ", ""},
+        {"BY SAULOB", kAuthorUrl},
+    };
     c.branding.background = LauncherHeader();
     for (const LauncherPage page : kLauncherPageOrder) {
       c.pages.push_back(PageFor(page));
@@ -815,9 +831,27 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       trg::OpenInFileManager(Utf8(exists ? paths_.settings_file : paths_.user_dir));
     }
     ui.ResetAllRow();
+    ui.Heading("Diagnostics");
+    ui.Toggle("Detailed logging", "Keeps logs for normal sessions. Crash diagnostics are always preserved.",
+              "crackdown_detailed_logging", true);
+    if (ui.ButtonRow("Logs folder", "Open the folder containing session and crash logs", "Open logs folder")) {
+      OpenLogsFolder();
+    }
     ui.Info("Port version", CRACKDOWN_PORT_VERSION);
     ui.Info("Libraries", "ReXGlue SDK " REXGLUE_VERSION_STRING "   \xC2\xB7   TRG Launcher " CRACKDOWN_TRG_VERSION);
     ui.Info("Game", "Xbox 360 disc, title 4D5307DC, game version TU0");
+    ui.Link(DisplayUrl(kRepositoryUrl).c_str(), kRepositoryUrl);
+  }
+
+  void OpenLogsFolder() {
+    std::error_code ec;
+    std::filesystem::path folder = paths_.logs_dir;
+    std::filesystem::create_directories(folder, ec);
+    if (!std::filesystem::is_directory(folder, ec)) {
+      REXLOG_WARN("Could not create the logs folder {}: {}", Utf8(folder), ec.message());
+      folder = folder.parent_path();
+    }
+    trg::OpenInFileManager(Utf8(folder));
   }
 
   LauncherPaths paths_;
@@ -855,12 +889,13 @@ bool g_skipped_once = false;
 
 std::pair<int, int> LauncherWindowSize() {
   const MonitorInfo primary = MonitorForSetting(1);
-  if (primary.width == 0 || primary.scale <= 0.0f) {
+  if (primary.width == 0) {
     return kLauncherWindowSize;
   }
-  const int max_width = int(primary.work_width * kLauncherMaxShare / primary.scale);
-  const int max_height = int(primary.work_height * kLauncherMaxShare / primary.scale);
-  return {std::min(kLauncherWindowSize.first, max_width), std::min(kLauncherWindowSize.second, max_height)};
+  const DpiWindowSize size = FitWindowToWorkArea(kLauncherWindowSize.first, kLauncherWindowSize.second,
+                                                 primary.work_width, primary.work_height, primary.scale,
+                                                 kLauncherMaxShare);
+  return {size.width, size.height};
 }
 
 }  // namespace
@@ -868,6 +903,8 @@ std::pair<int, int> LauncherWindowSize() {
 void LoadLauncherFonts(ImFontAtlas* atlas, float density) {
   // Latin-1 plus General Punctuation.
   static const ImWchar kRanges[] = {0x0020, 0x00FF, 0x2010, 0x205E, 0};
+  density = ValidDpiScale(density);
+  g_font_density = density;
   ImFontConfig config;
   config.RasterizerDensity = density;
   auto load = [&](const std::filesystem::path& path) -> ImFont* {
@@ -881,6 +918,37 @@ void LoadLauncherFonts(ImFontAtlas* atlas, float density) {
   g_fonts.regular = load(fonts.regular);
   g_fonts.semibold = load(fonts.semibold);
   g_fonts.bold = load(fonts.bold);
+}
+
+void UpdateLauncherFonts(rex::ui::ImGuiDrawer* drawer, rex::ui::ImmediateDrawer* immediate_drawer, float density) {
+  if (!drawer || !immediate_drawer || !g_fonts.regular) {
+    return;
+  }
+  density = ValidDpiScale(density);
+  if (std::abs(density - g_font_density) < 0.001f) {
+    return;
+  }
+
+  ImGuiIO& io = drawer->GetIO();
+  for (ImFont* font : {g_fonts.regular, g_fonts.semibold, g_fonts.bold}) {
+    if (!font) {
+      continue;
+    }
+    const ImWchar fallback = font->FallbackChar;
+    const ImWchar ellipsis = font->EllipsisChar;
+    font->ClearOutputData();
+    font->FallbackChar = fallback;
+    font->EllipsisChar = ellipsis;
+    font->CurrentRasterizerDensity = density;
+    for (ImFontConfig* source : font->Sources) {
+      source->RasterizerDensity = density;
+    }
+  }
+  io.Fonts->TexIsBuilt = false;
+  // The drawer holds the uploaded atlas until the immediate drawer is replaced.
+  drawer->SetImmediateDrawer(nullptr);
+  drawer->SetImmediateDrawer(immediate_drawer);
+  g_font_density = density;
 }
 
 bool ShouldShowLauncher(const std::filesystem::path& game_dir) {

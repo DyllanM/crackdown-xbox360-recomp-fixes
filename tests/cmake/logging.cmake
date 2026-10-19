@@ -1,0 +1,6 @@
+crackdown_add_test(dpi_tests SOURCES dpi_tests.cpp)
+crackdown_add_test(log_path_tests SOURCES log_path_tests.cpp ../src/log_path.cpp)
+crackdown_add_test(crash_report_tests SOURCES crash_report_tests.cpp ../src/crash_report.cpp)
+if(WIN32)
+    target_link_libraries(crash_report_tests PRIVATE shell32)
+endif()

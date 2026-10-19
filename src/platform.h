@@ -24,6 +24,16 @@ std::filesystem::path PortFolder();
 // The next free <name>_NNN.log in `folder`, which is created. Empty when it cannot be created.
 std::filesystem::path NextLogFile(const std::filesystem::path& folder, std::string_view name);
 
+// Windows: caches the current run's log file and installs the unhandled exception filter that appends
+// a CRASH REPORT block to it. A no-op on Linux.
+void InstallCrashReports();
+
+// The architecture this build runs as ("x86-64", "arm64", ...), for the startup log line.
+const char* ArchitectureName();
+
+// The graphics backend the xenos GPU plugin uses here.
+const char* GraphicsBackendName();
+
 struct UiFontFiles {
   std::filesystem::path regular, semibold, bold;
 };

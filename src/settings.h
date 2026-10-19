@@ -22,6 +22,7 @@ REXCVAR_DECLARE(bool, crackdown_show_fps);
 REXCVAR_DECLARE(bool, crackdown_show_render_resolution);
 REXCVAR_DECLARE(bool, crackdown_show_frame_counter);
 REXCVAR_DECLARE(bool, crackdown_msaa_compatibility);
+REXCVAR_DECLARE(bool, crackdown_detailed_logging);
 REXCVAR_DECLARE(std::string, crackdown_graphics_adapter);
 REXCVAR_DECLARE(std::string, crackdown_aspect_ratio);
 REXCVAR_DECLARE(std::string, crackdown_language);

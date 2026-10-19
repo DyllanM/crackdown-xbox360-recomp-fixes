@@ -12,6 +12,7 @@
 #include <rex/logging.h>
 #include <rex/rex_app.h>
 #include <rex/runtime.h>
+#include <rex/version.h>
 #include <rex/system/kernel_state.h>
 #include <rex/ui/ui_event.h>
 #include <rex/ui/windowed_app_context.h>
@@ -20,6 +21,7 @@
 
 #include "achievements_input.h"
 #include "achievements_overlay.h"
+#include "active_log.h"
 #include "aspect_ratio.h"
 #include "cache_device.h"
 #include "cheat_menu_input.h"
@@ -31,7 +33,10 @@
 #include "guest_fault_log.h"
 #include "internal_render_scale.h"
 #include "launcher.h"
+#include "log_filter.h"
+#include "log_path.h"
 #include "platform.h"
+#include "session_log.h"
 #include "settings.h"
 #include "skip_intro.h"
 #include "user_data.h"
@@ -55,12 +60,11 @@ class CrackdownApp : public rex::ReXApp {
     }
     ChooseUserData(paths, port_folder);
     // ReXGlue writes its logs beside the executable, which is read-only inside an AppImage.
-    if (port_folder != rex::filesystem::GetExecutableFolder() && rex::cvar::GetFlagByName("log_file").empty()) {
-      for (const auto& logs : {port_folder / "logs", paths.user_data_root / "logs"}) {
-        if (const std::filesystem::path file = crackdown::NextLogFile(logs, "crackdown"); !file.empty()) {
-          rex::cvar::SetFlagByName("log_file", crackdown::Utf8(file));
-          break;
-        }
+    const bool appimage = port_folder != rex::filesystem::GetExecutableFolder();
+    if (appimage && rex::cvar::GetFlagByName("log_file").empty()) {
+      const std::filesystem::path logs = crackdown::LogsFolder(port_folder, paths.user_data_root, {}, appimage);
+      if (const std::filesystem::path file = crackdown::NextLogFile(logs, "crackdown"); !file.empty()) {
+        rex::cvar::SetFlagByName("log_file", crackdown::Utf8(file));
       }
     }
   }
@@ -78,6 +82,7 @@ class CrackdownApp : public rex::ReXApp {
   }
 
   void OnPostInitLogging() override {
+    crackdown::InstallCrashReports();
     if (crackdown::RecoverInterruptedInstall(game_data_root())) {
       REXLOG_WARN("Restored the game files after an interrupted install");
     }
@@ -88,11 +93,19 @@ class CrackdownApp : public rex::ReXApp {
       REXLOG_INFO("{}", message.text);
     }
     crackdown::LoadPlayerSettings(crackdown::PlayerSettingsPath(user_data_root()));
+    crackdown::ApplyDetailedLogging();
+    crackdown::InstallSessionLogCleanup();
+    REXLOG_INFO("Crackdown port {} ({}, {}, ReXGlue SDK {})", CRACKDOWN_PORT_VERSION,
+                crackdown::ArchitectureName(), crackdown::GraphicsBackendName(), REXGLUE_VERSION_STRING);
     crackdown::ApplyGraphicsAdapter();
   }
 
   void OnConfigureFonts(ImFontAtlas* atlas) override {
     crackdown::LoadLauncherFonts(atlas, window() ? float(window()->GetDpi()) / float(window()->GetMediumDpi()) : 1.0f);
+  }
+
+  void OnDpiScaleChanged(float scale) override {
+    crackdown::UpdateLauncherFonts(imgui_drawer(), immediate_drawer(), scale);
   }
 
   void OnPreSetup(rex::RuntimeConfig&) override {
@@ -136,7 +149,8 @@ class CrackdownApp : public rex::ReXApp {
     launcher_open_ = true;
     crackdown::ShowLauncher(imgui_drawer(),
                             {defaults.game_data_root, defaults.user_data_root,
-                             crackdown::PlayerSettingsPath(defaults.user_data_root), user_data_.outcome},
+                             crackdown::PlayerSettingsPath(defaults.user_data_root), LogsDir(defaults.user_data_root),
+                             user_data_.outcome},
                             game_settings_, {}, MakeLauncherCallbacks([this, resume, defaults] { resume(defaults); }));
     return std::nullopt;
   }
@@ -155,7 +169,7 @@ class CrackdownApp : public rex::ReXApp {
     callbacks.window_changed = [this] { return game_settings_.WindowChanged() || game_settings_.RuntimeChanged(); };
     crackdown::ShowLauncher(imgui_drawer(),
                             {game_data_root(), user_data_root(), crackdown::PlayerSettingsPath(user_data_root()),
-                             user_data_.outcome},
+                             LogsDir(user_data_root()), user_data_.outcome},
                             game_settings_, {runtime(), immediate_drawer(), &achievements()}, std::move(callbacks));
   }
 
@@ -218,6 +232,21 @@ class CrackdownApp : public rex::ReXApp {
     CloseCheatMenu();
     DetachWindowHost();
     crackdown::DetachFrameRate();
+    crackdown::FinalizeSessionLog();
+  }
+
+  // Window close is a hard exit, which skips the clean-exit finalizer, so the session log is finalized
+  // before the process ends.
+  void OnClosing(rex::ui::UIEvent& e) override {
+    (void)e;
+    REXLOG_INFO("Window closing, shutting down...");
+    crackdown::FinalizeSessionLog();
+    if (runtime() && runtime()->kernel_state()) {
+      runtime()->kernel_state()->TerminateTitle();
+    }
+    REXLOG_INFO("Title terminated; hard-exiting process.");
+    rex::FlushLogging();
+    std::_Exit(0);
   }
 
  private:
@@ -227,6 +256,7 @@ class CrackdownApp : public rex::ReXApp {
       launcher_open_ = false;
       app_context().CallInUIThreadDeferred([this, start] {
         game_settings_.Apply();
+        crackdown::ApplyDetailedLogging();
         game_settings_.ApplyDisplayMode();
         start();
       });
@@ -300,6 +330,12 @@ class CrackdownApp : public rex::ReXApp {
     }
     cheat_menu_.reset();
     crackdown::cheats::SetMenuInputOpen(false);
+  }
+
+  std::filesystem::path LogsDir(const std::filesystem::path& user_data_root) const {
+    const std::filesystem::path port_folder = crackdown::PortFolder();
+    return crackdown::LogsFolder(port_folder, user_data_root, crackdown::ActiveLogFile(),
+                                 port_folder != rex::filesystem::GetExecutableFolder());
   }
 
   crackdown::GraphicsFallbackInfo DescribeGameFiles() const {

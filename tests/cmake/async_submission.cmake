@@ -1,0 +1,3 @@
+find_package(Threads REQUIRED)
+crackdown_add_test(d3d12_async_submission_tests SOURCES d3d12_async_submission_tests.cpp)
+target_link_libraries(d3d12_async_submission_tests PRIVATE Threads::Threads)

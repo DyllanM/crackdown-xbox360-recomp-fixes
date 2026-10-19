@@ -91,7 +91,7 @@ mkdir -p "$WORK/third_party" "$WORK/tools"
 for f in CMakeLists.txt CMakePresets.json crackdown_manifest.toml LICENSE tools/build-patched-rexruntime.sh; do
   rsync -a "$ROOT/$f" "$WORK/$f"
 done
-for d in cmake config src tests generated packaging patches/rexglue-sdk third_party/trg-launcher tools/dump_image; do
+for d in cmake config src tests generated packaging patches third_party/trg-launcher tools/dump_image; do
   mkdir -p "$WORK/$d"
   rsync -a --delete --exclude .git "$ROOT/$d/" "$WORK/$d/"
 done

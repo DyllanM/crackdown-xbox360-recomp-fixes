@@ -28,6 +28,7 @@ struct LauncherPaths {
   std::filesystem::path game_dir;
   std::filesystem::path user_dir;
   std::filesystem::path settings_file;
+  std::filesystem::path logs_dir;
   UserDataOutcome user_data_outcome = UserDataOutcome::kPortable;
 };
 
@@ -50,6 +51,9 @@ struct LauncherCallbacks {
 
 // `density` is the window's display scale, so text is rasterized for its real pixel size.
 void LoadLauncherFonts(ImFontAtlas* atlas, float density);
+
+// Re-rasterizes the launcher fonts in place when the window moves to a display with another scale.
+void UpdateLauncherFonts(rex::ui::ImGuiDrawer* drawer, rex::ui::ImmediateDrawer* immediate_drawer, float density);
 
 // Game files that are not ready always show the launcher: it is the only way to install them, so neither the
 // player's "off" choice nor the relaunch flag can hide it.
