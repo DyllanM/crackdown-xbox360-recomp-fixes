@@ -19,6 +19,7 @@
 #include "frame_timing.h"
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
+#include "keybinds.h"
 #include "language_setting.h"
 #include "multisampling.h"
 #include "platform.h"
@@ -66,38 +67,44 @@ REXCVAR_DEFINE_BOOL(crackdown_launcher_fullscreen, false, "Crackdown",
 namespace crackdown {
 namespace {
 
-const std::vector<std::string> kGameSettingKeys = {
-    "crackdown_launcher",
-    "crackdown_skip_intro",
-    "crackdown_frame_rate",
-    "crackdown_show_fps",
-    "crackdown_show_render_resolution",
-    "crackdown_show_frame_counter",
-    "fullscreen",
-    "window_width",
-    "window_height",
-    "monitor",
-    kTearingSetting,
-    "crackdown_graphics_adapter",
-    "crackdown_aspect_ratio",
-    kLanguageSetting,
-    kLetterboxSetting,
-    "resolution_scale",
-    "internal_render_scale",
-    "swap_post_effect",
-    "crackdown_msaa_compatibility",
-    "crackdown_detailed_logging",
-    "anisotropic_override",
-    "mnk_mode",
-    "mnk_sensitivity",
-    "cheat_infinite_health",
-    "cheat_movement_speed",
-    "cheat_jump_height",
-    "cheat_no_fall_damage",
-    "cheat_infinite_ammo",
-    "cheat_infinite_vehicle_health",
-    "cheat_vehicle_speed",
-};
+const std::vector<std::string> kGameSettingKeys = [] {
+  std::vector<std::string> keys = {
+      "crackdown_launcher",
+      "crackdown_skip_intro",
+      "crackdown_frame_rate",
+      "crackdown_show_fps",
+      "crackdown_show_render_resolution",
+      "crackdown_show_frame_counter",
+      "fullscreen",
+      "window_width",
+      "window_height",
+      "monitor",
+      kTearingSetting,
+      "crackdown_graphics_adapter",
+      "crackdown_aspect_ratio",
+      kLanguageSetting,
+      kLetterboxSetting,
+      "resolution_scale",
+      "internal_render_scale",
+      "swap_post_effect",
+      "crackdown_msaa_compatibility",
+      "crackdown_detailed_logging",
+      "anisotropic_override",
+      "mnk_mode",
+      "mnk_sensitivity",
+      "cheat_infinite_health",
+      "cheat_movement_speed",
+      "cheat_jump_height",
+      "cheat_no_fall_damage",
+      "cheat_infinite_ammo",
+      "cheat_infinite_vehicle_health",
+      "cheat_vehicle_speed",
+  };
+  for (const KeyboardAction& action : kKeyboardActions) {
+    keys.emplace_back(action.key);
+  }
+  return keys;
+}();
 
 const std::vector<std::string> kWindowKeys = {
     "window_width",

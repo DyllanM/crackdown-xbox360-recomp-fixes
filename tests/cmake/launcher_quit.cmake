@@ -1,0 +1,1 @@
+crackdown_add_test(launcher_quit_tests SOURCES launcher_quit_tests.cpp)

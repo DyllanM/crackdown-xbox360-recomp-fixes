@@ -33,10 +33,12 @@
 #include "game_files.h"
 #include "graphics_adapters.h"
 #include "internal_render_scale.h"
+#include "keybinds.h"
 #include "language_setting.h"
 #include "launcher_achievements.h"
 #include "launcher_achievements_page.h"
 #include "launcher_pages.h"
+#include "launcher_quit.h"
 #include "platform.h"
 #include "presentation_setting.h"
 #include "settings.h"
@@ -119,16 +121,6 @@ std::vector<trg::Option> AspectRatioOptions() {
     options.push_back({info.key, info.label});
   }
   return options;
-}
-
-std::string KeyList(std::string keys) {
-  if (keys.empty()) {
-    return "None";
-  }
-  for (size_t i = keys.find(','); i != std::string::npos; i = keys.find(',', i)) {
-    keys.replace(i, 1, " or ");
-  }
-  return keys;
 }
 
 std::vector<AchievementEntry> LoadAchievementEntries(const rex::system::AchievementManager& manager) {
@@ -224,7 +216,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         RequestPlay();
         break;
       case trg::Result::kQuit:
-        if (!starting_) {
+        if (!starting_ && crackdown::LauncherQuitAllowed(ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
           Finish(cb_.quit);
         }
         break;
@@ -397,6 +389,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     c.save_on_play = false;
     c.theme = LauncherTheme();
     c.note = "Play applies the changes. Save keeps them without starting.";
+    c.hints = "Enter  Play     Alt+F4  Quit     Ctrl+S  Save";
     c.fonts = g_fonts;
     c.branding.title = "CRACKDOWN";
     c.branding.subtitle_segments = {
@@ -793,21 +786,45 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   static void PageControls(trg::Ui& ui) {
     ui.Info("Controller", "Automatic: Xbox controllers work without setup.");
-    ui.Toggle("Keyboard and Mouse",
-              "Plays as an Xbox 360 controller using keyboard and mouse, together with any connected controller.",
-              "mnk_mode", false, "Disabled", "Enabled");
+    ui.Toggle("Keyboard", "Use the keyboard for gameplay controls together with the controller.", "mnk_mode", false,
+              "Off", "On");
     ImGui::BeginDisabled(!ui.settings().GetBool("mnk_mode", false));
     ui.SliderFloat("Mouse sensitivity", "How fast the mouse turns the camera.", "mnk_sensitivity", 1.0f, 0.25f, 3.0f,
                    "%.2fx");
     ImGui::EndDisabled();
-    if (ui.Section("Keyboard keys")) {
-      ui.Help("The mouse turns the camera, and so do the plain arrow keys. Menus use W A S D or Shift + arrow keys.");
-      for (const rex::cvar::FlagEntry& e : rex::cvar::GetRegistry()) {
-        if (e.category == "Input/Keybinds/Controller") {
-          ui.Info(e.description.c_str(), KeyList(e.getter()).c_str());
-        }
+    if (ui.ConfirmRow("Keyboard defaults", "Puts the keyboard controls back to their standard layout.",
+                      "Reset to defaults", "Put every key back to its default?", "Reset")) {
+      ResetKeyboardDefaults(ui.settings());
+      ui.SetStatus("Keyboard controls reset to defaults.");
+    }
+    if (ui.Section("Keyboard controls", true)) {
+      ui.Help("Click a key, then press the new one. Esc cancels.");
+      const bool enabled = ui.settings().GetBool("mnk_mode", false);
+      if (!enabled) {
+        ImGui::BeginDisabled();
+      }
+      for (const KeyboardAction& action : kKeyboardActions) {
+        KeyboardRow(ui, action);
+      }
+      if (!enabled) {
+        ImGui::EndDisabled();
       }
     }
+  }
+
+  static void KeyboardRow(trg::Ui& ui, const KeyboardAction& action) {
+    const std::string shown = KeyboardBindingLabel(SavedKeyboardBinding(ui.settings(), action));
+    const std::optional<ImGuiKey> key = ui.KeyBindRow(action.label, nullptr, shown);
+    if (!key) {
+      return;
+    }
+    const ImGuiIO& io = ImGui::GetIO();
+    const std::string binding = KeyboardBindingFor(*key, io.KeyShift, io.KeyCtrl, io.KeyAlt);
+    if (binding.empty()) {
+      ui.SetStatus("That key cannot be used.");
+      return;
+    }
+    ui.settings().Set(action.key, binding);
   }
 
   void PageAbout(trg::Ui& ui) {
