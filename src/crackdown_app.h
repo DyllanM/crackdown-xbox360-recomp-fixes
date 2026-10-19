@@ -198,6 +198,11 @@ class CrackdownApp : public rex::ReXApp {
     if (runtime()) {
       MountCacheDevice(runtime()->file_system(), user_data_root());
       crackdown::InstallCrashDiagnostics(runtime()->virtual_membase());
+      // Crackdown has no local split screen and polls user 0 (XUSER_INDEX_ANY is pinned there), so every pad drives
+      // user 0 instead of the default one-pad-per-user slots.
+      if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {
+        input->SetDeviceAssignment(std::make_unique<rex::input::SharedAssignment>());
+      }
     }
     if (window()) {
       AttachWindowHost(
