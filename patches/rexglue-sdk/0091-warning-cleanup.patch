@@ -1,0 +1,405 @@
+Warning cleanup, shared code: spelling only, no behaviour change.
+
+Fixes clang warnings that are cosmetic in this code; every change compiles to the same behaviour.
+- -Wnontrivial-memcall (52 occurrences, texture/cache.h is included by 13 files): TextureKey and TextureBinding are
+  memcpy'd/memset on purpose so the padding stays zero for a stable hash; the destination is cast to void* as clang
+  suggests.
+- -Wunused-parameter in widely included headers (texture/cache.h global_lock, xmemory.h host_page_number,
+  xma/decoder.h ppc_context): the parameter names are commented out; signatures and vtables are unchanged.
+- xenos.h MakePacketType0 ignored its one_reg argument (bit 15 of the type-0 header, which the index mask leaves
+  free); it now sets it. The only caller (xboxkrnl_video.cpp) passes the default false, so its packets are unchanged.
+- -Wmissing-field-initializers (29, dxbc_translator.cpp system constant table): SystemConstantRdef::padding_after gets
+  a default member initializer of 0, the value the omitted initializers already gave it; layout unchanged.
+- -Wreorder-ctor: the initializer lists of RenderTargetCache, NullDevice, DxbcShaderTranslator, XObject and Window are
+  written in member declaration order, which is the order they were always initialized in; no initializer reads
+  another member.
+- -Wsign-compare on unsigned `== -1` sentinels (xma_decoder, translator, xam_net, xboxkrnl_debug, xfile, xsocket): the
+  -1 is written in the operand's unsigned type, the same value the implicit conversion produced. imgui_drawer casts
+  the already non-negative button index to size_t.
+- -Wpessimizing-move (presenter.cpp x2) and -Wrange-loop-construct (primitive_processor.cpp): return locals without
+  std::move, iterate the map with const auto& (the old declared pair type made a copy of every entry).
+- -Wmissing-braces/-Wmissing-field-initializers (xboxkrnl_threading.cpp): X_SLIST_HEADER `= {0}` becomes `= {}`, still
+  all zero.
+- -Wunused-lambda-capture (utf8.cpp): prime is a constant expression and needs no capture.
+
+diff --git a/include/rex/audio/xma/decoder.h b/include/rex/audio/xma/decoder.h
+index df00f06..e17334b 100644
+--- a/include/rex/audio/xma/decoder.h
++++ b/include/rex/audio/xma/decoder.h
+@@ -59,10 +59,10 @@ class XmaDecoder {
+  private:
+   void WorkerThreadMain();
+ 
+-  static uint32_t MMIOReadRegisterThunk(void* ppc_context, XmaDecoder* as, uint32_t addr) {
++  static uint32_t MMIOReadRegisterThunk(void* /*ppc_context*/, XmaDecoder* as, uint32_t addr) {
+     return as->ReadRegister(addr);
+   }
+-  static void MMIOWriteRegisterThunk(void* ppc_context, XmaDecoder* as, uint32_t addr,
++  static void MMIOWriteRegisterThunk(void* /*ppc_context*/, XmaDecoder* as, uint32_t addr,
+                                      uint32_t value) {
+     as->WriteRegister(addr, value);
+   }
+diff --git a/include/rex/graphics/pipeline/render_target/cache.h b/include/rex/graphics/pipeline/render_target/cache.h
+index d8138dc..0790376 100644
+--- a/include/rex/graphics/pipeline/render_target/cache.h
++++ b/include/rex/graphics/pipeline/render_target/cache.h
+@@ -213,11 +213,11 @@ class RenderTargetCache {
+   RenderTargetCache(const RegisterFile& register_file, const memory::Memory& memory,
+                     uint32_t draw_resolution_scale_x, uint32_t draw_resolution_scale_y)
+       : register_file_(register_file),
+-        draw_extent_estimator_(register_file, memory),
+         draw_resolution_scale_x_(draw_resolution_scale_x),
+         draw_resolution_scale_y_(draw_resolution_scale_y),
+         host_scale_quarters_x_(draw_resolution_scale_x << 2),
+-        host_scale_quarters_y_(draw_resolution_scale_y << 2) {
++        host_scale_quarters_y_(draw_resolution_scale_y << 2),
++        draw_extent_estimator_(register_file, memory) {
+     assert_not_zero(draw_resolution_scale_x);
+     assert_not_zero(draw_resolution_scale_y);
+   }
+diff --git a/include/rex/graphics/pipeline/shader/dxbc_translator.h b/include/rex/graphics/pipeline/shader/dxbc_translator.h
+index bb1a61a..0da4a36 100644
+--- a/include/rex/graphics/pipeline/shader/dxbc_translator.h
++++ b/include/rex/graphics/pipeline/shader/dxbc_translator.h
+@@ -1006,7 +1006,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
+     const char* name;
+     ShaderRdefTypeIndex type;
+     uint32_t size;
+-    uint32_t padding_after;
++    uint32_t padding_after = 0;
+   };
+   static const SystemConstantRdef system_constant_rdef_[size_t(SystemConstants::Index::kCount)];
+   // Mask of system constants (1 << SystemConstants::Index) used in the shader,
+diff --git a/include/rex/graphics/pipeline/texture/cache.h b/include/rex/graphics/pipeline/texture/cache.h
+index 2db832d..3d7293b 100644
+--- a/include/rex/graphics/pipeline/texture/cache.h
++++ b/include/rex/graphics/pipeline/texture/cache.h
+@@ -189,14 +189,14 @@ class TextureCache {
+     uint32_t is_valid : 1;  // 98
+ 
+     TextureKey() { MakeInvalid(); }
+-    TextureKey(const TextureKey& key) { std::memcpy(this, &key, sizeof(*this)); }
++    TextureKey(const TextureKey& key) { std::memcpy(static_cast<void*>(this), &key, sizeof(*this)); }
+     TextureKey& operator=(const TextureKey& key) {
+-      std::memcpy(this, &key, sizeof(*this));
++      std::memcpy(static_cast<void*>(this), &key, sizeof(*this));
+       return *this;
+     }
+     void MakeInvalid() {
+       // Zero everything, including the padding, for a stable hash.
+-      std::memset(this, 0, sizeof(*this));
++      std::memset(static_cast<void*>(this), 0, sizeof(*this));
+     }
+ 
+     using Hasher = rex::XXHasher<TextureKey>;
+@@ -245,10 +245,10 @@ class TextureCache {
+     static constexpr uint32_t kOutdatedBitMips = UINT32_C(1) << 1;
+     uint32_t outdated_mask() const { return outdated_mask_.load(std::memory_order_acquire); }
+ 
+-    bool base_outdated(const std::unique_lock<std::recursive_mutex>& global_lock) const {
++    bool base_outdated(const std::unique_lock<std::recursive_mutex>& /*global_lock*/) const {
+       return base_outdated_;
+     }
+-    bool mips_outdated(const std::unique_lock<std::recursive_mutex>& global_lock) const {
++    bool mips_outdated(const std::unique_lock<std::recursive_mutex>& /*global_lock*/) const {
+       return mips_outdated_;
+     }
+     void MakeUpToDateAndWatch(const std::unique_lock<std::recursive_mutex>& global_lock);
+@@ -503,7 +503,7 @@ class TextureCache {
+     TextureBinding() { Reset(); }
+ 
+     void Reset() {
+-      std::memset(this, 0, sizeof(*this));
++      std::memset(static_cast<void*>(this), 0, sizeof(*this));
+       host_swizzle = xenos::XE_GPU_TEXTURE_SWIZZLE_0000;
+       swizzled_signs = kSwizzledSignsUnsigned;
+     }
+diff --git a/include/rex/graphics/xenos.h b/include/rex/graphics/xenos.h
+index f7fd14e..6942b23 100644
+--- a/include/rex/graphics/xenos.h
++++ b/include/rex/graphics/xenos.h
+@@ -1622,7 +1622,7 @@ inline uint32_t MakePacketType0(uint16_t index, uint16_t count, bool one_reg = f
+   // ttcccccc cccccccc oiiiiiii iiiiiiii
+   assert(index <= 0x7FFF);
+   assert(count >= 1 && count <= 0x4000);
+-  return (0u << 30) | (((count - 1) & 0x3FFF) << 16) | (index & 0x7FFF);
++  return (0u << 30) | (((count - 1) & 0x3FFF) << 16) | (uint32_t(one_reg) << 15) | (index & 0x7FFF);
+ }
+ 
+ inline uint32_t MakePacketType1(uint16_t index_1, uint16_t index_2) {
+diff --git a/include/rex/system/xmemory.h b/include/rex/system/xmemory.h
+index 0c39a42..1bfa7e9 100644
+--- a/include/rex/system/xmemory.h
++++ b/include/rex/system/xmemory.h
+@@ -253,7 +253,7 @@ class BaseHeap {
+   // is recorded in a flag that EnableAccessCallbacks checks before re-applying
+   // protection, so silently unprotecting here would disable the watch forever.
+   // Only PhysicalHeap tracks this; every other heap has no watch state.
+-  virtual bool IsHostPageWriteWatched(uint32_t host_page_number) const { return false; }
++  virtual bool IsHostPageWriteWatched(uint32_t /*host_page_number*/) const { return false; }
+ 
+   void Initialize(memory::Memory* memory, uint8_t* membase, HeapType heap_type, uint32_t heap_base,
+                   uint32_t heap_size, uint32_t page_size, uint32_t host_address_offset = 0);
+diff --git a/src/audio/xma_decoder.cpp b/src/audio/xma_decoder.cpp
+index a0a178d..d34452c 100644
+--- a/src/audio/xma_decoder.cpp
++++ b/src/audio/xma_decoder.cpp
+@@ -205,7 +205,7 @@ int XmaDecoder::GetContextId(uint32_t guest_ptr) {
+ 
+ uint32_t XmaDecoder::AllocateContext() {
+   size_t index = context_bitmap_.Acquire();
+-  if (index == -1) {
++  if (index == size_t(-1)) {
+     // Out of contexts.
+     return 0;
+   }
+diff --git a/src/core/utf8.cpp b/src/core/utf8.cpp
+index 4fcfd7b..d02541f 100644
+--- a/src/core/utf8.cpp
++++ b/src/core/utf8.cpp
+@@ -93,7 +93,7 @@ template <bool LOWER>
+ inline size_t hash_fnv1a(const std::string_view view) {
+   const size_t offset_basis = 0xCBF29CE484222325ull;
+   const size_t prime = 0x00000100000001B3ull;
+-  auto work = [&prime](size_t hash, uint8_t byte_of_data) {
++  auto work = [](size_t hash, uint8_t byte_of_data) {
+     hash ^= byte_of_data;
+     hash *= prime;
+     return hash;
+diff --git a/src/filesystem/devices/null_device.cpp b/src/filesystem/devices/null_device.cpp
+index aed2884..37b726d 100644
+--- a/src/filesystem/devices/null_device.cpp
++++ b/src/filesystem/devices/null_device.cpp
+@@ -21,7 +21,7 @@ namespace rex::filesystem {
+ 
+ NullDevice::NullDevice(const std::string& mount_path,
+                        const std::initializer_list<std::string>& null_paths)
+-    : Device(mount_path), null_paths_(null_paths), name_("NullDevice") {}
++    : Device(mount_path), name_("NullDevice"), null_paths_(null_paths) {}
+ 
+ NullDevice::~NullDevice() = default;
+ 
+diff --git a/src/graphics/pipeline/shader/dxbc_translator.cpp b/src/graphics/pipeline/shader/dxbc_translator.cpp
+index 2b299cf..e338325 100644
+--- a/src/graphics/pipeline/shader/dxbc_translator.cpp
++++ b/src/graphics/pipeline/shader/dxbc_translator.cpp
+@@ -63,14 +63,14 @@ DxbcShaderTranslator::DxbcShaderTranslator(ui::GraphicsProvider::GpuVendorID ven
+                                            bool force_emit_source_map)
+     : a_(shader_code_, statistics_),
+       ao_(shader_object_, statistics_),
++      emit_source_map_(force_emit_source_map || REXCVAR_GET(dxbc_source_map)),
+       vendor_id_(vendor_id),
+       bindless_resources_used_(bindless_resources_used),
+       edram_rov_used_(edram_rov_used),
+       gamma_render_target_as_unorm8_(gamma_render_target_as_unorm8),
+       msaa_2x_supported_(msaa_2x_supported),
+       draw_resolution_scale_x_(draw_resolution_scale_x),
+-      draw_resolution_scale_y_(draw_resolution_scale_y),
+-      emit_source_map_(force_emit_source_map || REXCVAR_GET(dxbc_source_map)) {
++      draw_resolution_scale_y_(draw_resolution_scale_y) {
+   assert_not_zero(draw_resolution_scale_x);
+   assert_not_zero(draw_resolution_scale_y);
+   host_scale_quarters_x_ = draw_resolution_scale_x << 2;
+diff --git a/src/graphics/pipeline/shader/translator.cpp b/src/graphics/pipeline/shader/translator.cpp
+index e472251..9c3afda 100644
+--- a/src/graphics/pipeline/shader/translator.cpp
++++ b/src/graphics/pipeline/shader/translator.cpp
+@@ -459,7 +459,7 @@ void Shader::GatherTextureFetchInformation(const TextureFetchInstruction& op,
+     }
+   }
+ 
+-  if (binding.binding_index == -1) {
++  if (binding.binding_index == size_t(-1)) {
+     // Assign a unique binding index.
+     binding.binding_index = unique_texture_bindings++;
+   }
+diff --git a/src/graphics/primitive_processor.cpp b/src/graphics/primitive_processor.cpp
+index 5b6c3dc..94741ea 100644
+--- a/src/graphics/primitive_processor.cpp
++++ b/src/graphics/primitive_processor.cpp
+@@ -268,7 +268,7 @@ void PrimitiveProcessor::ClearPerFrameCache() {
+     return;
+   }
+   std::lock_guard<std::mutex> cache_lock(cache_mutex_);
+-  for (const std::pair<CacheKey, size_t>& cache_map_entry : cache_map_) {
++  for (const auto& cache_map_entry : cache_map_) {
+     cache_entry_pool_[cache_map_entry.second].free_next = cache_bucket_free_first_entry_;
+     cache_bucket_free_first_entry_ = cache_map_entry.second;
+   }
+diff --git a/src/kernel/xam/xam_net.cpp b/src/kernel/xam/xam_net.cpp
+index 58e36a4..ac15092 100644
+--- a/src/kernel/xam/xam_net.cpp
++++ b/src/kernel/xam/xam_net.cpp
+@@ -365,7 +365,7 @@ u32 NetDll_WSAWaitForMultipleEvents_entry(u32 num_events, mapped_u32 events, u32
+   X_STATUS result = 0;
+   do {
+     result = xboxkrnl::xeNtWaitForMultipleObjectsEx(num_events, events, wait_all, 1, alertable,
+-                                                    timeout != -1 ? &timeout_wait : nullptr);
++                                                    timeout != uint32_t(-1) ? &timeout_wait : nullptr);
+   } while (result == X_STATUS_ALERTED);
+ 
+   if (XFAILED(result)) {
+@@ -571,7 +571,7 @@ u32 NetDll_inet_addr_entry(mapped_string addr_ptr) {
+   // https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-inet_addr#return-value
+   // Based on console research it seems like x360 uses old version of inet_addr
+   // In case of empty string it return 0 instead of -1
+-  if (addr == -1 && !addr_ptr.value().length()) {
++  if (addr == uint32_t(-1) && !addr_ptr.value().length()) {
+     return 0;
+   }
+ 
+@@ -757,7 +757,7 @@ struct host_set {
+     this->count = guest_set->fd_count;
+     for (uint32_t i = 0; i < this->count; ++i) {
+       auto socket_handle = static_cast<X_HANDLE>(guest_set->fd_array[i]);
+-      if (socket_handle == -1) {
++      if (socket_handle == X_HANDLE(-1)) {
+         this->count = i;
+         break;
+       }
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_debug.cpp b/src/kernel/xboxkrnl/xboxkrnl_debug.cpp
+index 670c446..af20283 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_debug.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_debug.cpp
+@@ -63,7 +63,7 @@ void HandleSetThreadName(ppc_ptr_t<X_EXCEPTION_RECORD> record) {
+   std::replace_if(name.begin(), name.end(), [](auto c) { return c < 32 || c > 127; }, '?');
+ 
+   object_ref<XThread> thread;
+-  if (thread_info->thread_id == -1) {
++  if (thread_info->thread_id == uint32_t(-1)) {
+     // Current thread.
+     thread = retain_object(XThread::GetCurrentThread());
+   } else {
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_threading.cpp b/src/kernel/xboxkrnl/xboxkrnl_threading.cpp
+index 193168a..f602a60 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_threading.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_threading.cpp
+@@ -1368,8 +1368,8 @@ u32 InterlockedPopEntrySList_entry(ppc_ptr_t<X_SLIST_HEADER> plist_ptr) {
+   assert_not_null(plist_ptr);
+ 
+   uint32_t popped = 0;
+-  alignas(8) X_SLIST_HEADER old_hdr = {0};
+-  alignas(8) X_SLIST_HEADER new_hdr = {0};
++  alignas(8) X_SLIST_HEADER old_hdr = {};
++  alignas(8) X_SLIST_HEADER new_hdr = {};
+   do {
+     old_hdr = *plist_ptr;
+     auto next = REX_KERNEL_MEMORY()->TranslateVirtual<X_SINGLE_LIST_ENTRY*>(old_hdr.next.next);
+@@ -1391,7 +1391,7 @@ u32 InterlockedFlushSList_entry(ppc_ptr_t<X_SLIST_HEADER> plist_ptr) {
+   assert_not_null(plist_ptr);
+ 
+   alignas(8) X_SLIST_HEADER old_hdr = *plist_ptr;
+-  alignas(8) X_SLIST_HEADER new_hdr = {0};
++  alignas(8) X_SLIST_HEADER new_hdr = {};
+   uint32_t first = 0;
+   do {
+     old_hdr = *plist_ptr;
+diff --git a/src/system/xfile.cpp b/src/system/xfile.cpp
+index 4179e8b..4826d6d 100644
+--- a/src/system/xfile.cpp
++++ b/src/system/xfile.cpp
+@@ -226,7 +226,7 @@ X_STATUS XFile::ReadScatter(uint32_t segments_guest_address, uint32_t length, ui
+     result = ReadInternal(
+         read_buffer, read_length,
+         byte_offset
+-            ? ((byte_offset != -1 && byte_offset != -2) ? byte_offset + read_total : byte_offset)
++            ? ((byte_offset != uint64_t(-1) && byte_offset != uint64_t(-2)) ? byte_offset + read_total : byte_offset)
+             : -1,
+         &bytes_read, apc_context, false);
+ 
+diff --git a/src/system/xobject.cpp b/src/system/xobject.cpp
+index b100120..2829f1a 100644
+--- a/src/system/xobject.cpp
++++ b/src/system/xobject.cpp
+@@ -35,8 +35,8 @@ XObject::XObject(Type type) : kernel_state_(nullptr), pointer_ref_count_(1), typ
+ 
+ XObject::XObject(KernelState* kernel_state, Type type)
+     : kernel_state_(kernel_state),
+-      type_(type),
+       pointer_ref_count_(1),
++      type_(type),
+       guest_object_ptr_(0),
+       allocated_guest_object_(false) {
+   handles_.reserve(10);
+diff --git a/src/system/xsocket.cpp b/src/system/xsocket.cpp
+index 2d13ac8..eeffdd3 100644
+--- a/src/system/xsocket.cpp
++++ b/src/system/xsocket.cpp
+@@ -53,7 +53,7 @@ X_STATUS XSocket::Initialize(AddressFamily af, Type type, Protocol proto) {
+   }
+ 
+   native_handle_ = socket(af, type, proto);
+-  if (native_handle_ == -1) {
++  if (native_handle_ == uint64_t(-1)) {
+     return X_STATUS_UNSUCCESSFUL;
+   }
+ 
+@@ -134,7 +134,7 @@ object_ref<XSocket> XSocket::Accept(N_XSOCKADDR* name, int* name_len) {
+   sockaddr n_sockaddr;
+   socklen_t n_name_len = sizeof(sockaddr);
+   uintptr_t ret = accept(native_handle_, &n_sockaddr, &n_name_len);
+-  if (ret == -1) {
++  if (ret == uintptr_t(-1)) {
+     std::memset(name, 0, *name_len);
+     *name_len = 0;
+     return nullptr;
+diff --git a/src/ui/imgui_drawer.cpp b/src/ui/imgui_drawer.cpp
+index f270f3c..ac538ca 100644
+--- a/src/ui/imgui_drawer.cpp
++++ b/src/ui/imgui_drawer.cpp
+@@ -523,7 +523,7 @@ void ImGuiDrawer::OnMouseDown(MouseEvent& e) {
+       break;
+     }
+   }
+-  if (button >= 0 && button < std::size(io.MouseDown)) {
++  if (button >= 0 && size_t(button) < std::size(io.MouseDown)) {
+     if (!io.MouseDown[button]) {
+       if (!ImGui::IsAnyMouseDown()) {
+         window_->CaptureMouse();
+@@ -555,7 +555,7 @@ void ImGuiDrawer::OnMouseUp(MouseEvent& e) {
+       break;
+     }
+   }
+-  if (button >= 0 && button < std::size(io.MouseDown)) {
++  if (button >= 0 && size_t(button) < std::size(io.MouseDown)) {
+     if (io.MouseDown[button]) {
+       io.MouseDown[button] = false;
+       if (!ImGui::IsAnyMouseDown()) {
+diff --git a/src/ui/presenter.cpp b/src/ui/presenter.cpp
+index c13228e..1a3f891 100644
+--- a/src/ui/presenter.cpp
++++ b/src/ui/presenter.cpp
+@@ -874,7 +874,7 @@ std::unique_lock<std::mutex> Presenter::ConsumeGuestOutput(
+   if (properties_out) {
+     *properties_out = properties;
+   }
+-  return std::move(consumer_lock);
++  return consumer_lock;
+ }
+ 
+ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
+@@ -1712,7 +1712,7 @@ Microsoft::WRL::ComPtr<IDXGIOutput> Presenter::GetDXGIOutputForMonitor(IDXGIFact
+          ++output_index) {
+       DXGI_OUTPUT_DESC output_desc;
+       if (SUCCEEDED(output->GetDesc(&output_desc)) && output_desc.Monitor == monitor) {
+-        return std::move(output);
++        return output;
+       }
+     }
+   }
+diff --git a/src/ui/window.cpp b/src/ui/window.cpp
+index b4e045f..dccd12c 100644
+--- a/src/ui/window.cpp
++++ b/src/ui/window.cpp
+@@ -71,9 +71,9 @@ namespace ui {
+ Window::Window(WindowedAppContext& app_context, const std::string_view title,
+                uint32_t desired_logical_width, uint32_t desired_logical_height)
+     : app_context_(app_context),
+-      title_(title),
+       desired_logical_width_(desired_logical_width),
+-      desired_logical_height_(desired_logical_height) {}
++      desired_logical_height_(desired_logical_height),
++      title_(title) {}
+ 
+ Window::~Window() {
+   // In case the implementation didn't need to call EnterDestructor. Though

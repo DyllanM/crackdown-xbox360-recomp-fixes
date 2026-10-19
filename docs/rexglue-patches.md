@@ -5,8 +5,8 @@ result is installed over the stock files in `tools/rexglue`. The game compiles a
 must not move virtual functions or data members of classes the generated game code uses.
 
 `NNNN-name.patch` applies on both platforms, `NNNN-name.windows.patch` only on Windows and `NNNN-name.linux.patch` only on
-Linux. Numbers are unique and patches apply in name order; gaps are fine. 47 patches are common, 16 are Windows only and
-13 are Linux only, so 63 apply on Windows and 60 on Linux. Patches 0005 and 0052 change the code generator and are the
+Linux. Numbers are unique and patches apply in name order; gaps are fine. 52 patches are common, 19 are Windows only and
+13 are Linux only, so 71 apply on Windows and 65 on Linux. Patches 0005 and 0052 change the code generator and are the
 reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
 
 | # | Platform | Purpose |
@@ -77,6 +77,14 @@ reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the run
 | 0083 | windows | `gpu_host_threads_avoid_cpu0`: the command processor and submission threads run on the process's CPUs except 0 and 1 when it has at least 8 in one processor group |
 | 0084 | all | the ImGui drawer applies the cursor shape ImGui asked for through `SDL_SetCursor`, which nothing did otherwise (`imgui_drawer.cpp`), so launcher hyperlinks show the hand cursor |
 | 0085 | all | `DetachFileSink` removes and closes the rotating file sink without destroying loggers, so a controlled hard exit can delete the session log without freeing logger state other threads may still use |
+| 0086 | all | `XamLoaderLaunchTitle` keeps the expanded launch path in an owning `std::string`; a `std::string_view` pointed into the temporary from `utf8_join_guest_paths()` for a relative XEX name (`-Wdangling-assignment-gsl`) |
+| 0087 | all | `RtlCompareStringN` compares up to the shorter real length (0xFFFF = `strlen`) and then orders by length, as `RtlCompareString`; before, "abc" and "abcd" compared equal |
+| 0088 | windows | D3D12 texture load: `host_slice_size_base` starts at 0 (a `-Wuninitialized` false positive; the conditional lvalue write is not tracked, and every read follows a write) |
+| 0089 | all | draw extent estimate: a negative scissor edge no longer counts as the 8192 "no scissor" case (signed comparison against `int32_t(xenos::kTexture2DCubeMaxWidthHeight)`); non-negative scissors are unchanged |
+| 0090 | windows | D3D12 render target cache: the direct resolve success/fallback counters that 0034 left unused are removed (the class is private to the GPU plugin) |
+| 0091 | all | warning cleanup without behaviour change except `MakePacketType0`, which now sets its one-register bit (its only caller passes false): `void*` casts for the deliberate texture-key `memcpy`/`memset`, unused parameter names, initializer lists in declaration order, unsigned `-1` sentinels, no pessimizing `std::move`, range-loop references, `= {}` for `X_SLIST_HEADER`, and an unused lambda capture |
+| 0092 | windows | Windows half of 0091 and 0093: full `D3D12_HEAP_PROPERTIES` initializers, a missing `override`, explicit `GetProcAddress` casts, an unused lambda capture and an unused local |
+| 0093 | all | unused locals removed where their initializer has no side effect; guest-memory reads, FidelityFX-only locals and the only use of a parameter keep their evaluation with `[[maybe_unused]]` |
 
 Patches 0054 to 0058 and 0078 to 0083 and the hooks in `src/audio_guest_sync.cpp` are adapted from Unowa001/crackdown-recomp
 (BSD 3-Clause, notice in [THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).

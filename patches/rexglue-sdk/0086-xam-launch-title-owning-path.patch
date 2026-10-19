@@ -1,0 +1,20 @@
+XamLoaderLaunchTitle: the launch path is an owning std::string.
+
+`auto path = raw_name_ptr.value()` made `path` a std::string_view. For a bare file name it was then pointed at the
+std::string returned by utf8_join_guest_paths(), which is destroyed at the end of that statement, and
+`loader_data.launch_path = path` read freed memory (clang -Wdangling-assignment-gsl). Holding the path in a
+std::string keeps the joined value alive. Only reached when the title relaunches a XEX by relative name.
+
+diff --git a/src/kernel/xam/xam_info.cpp b/src/kernel/xam/xam_info.cpp
+index 1fda053..05bd3f8 100644
+--- a/src/kernel/xam/xam_info.cpp
++++ b/src/kernel/xam/xam_info.cpp
+@@ -268,7 +268,7 @@ void XamLoaderLaunchTitle_entry(mapped_string raw_name_ptr, u32 flags) {
+ 
+   // Translate the launch path to a full path.
+   if (raw_name_ptr) {
+-    auto path = raw_name_ptr.value();
++    std::string path(raw_name_ptr.value());
+     if (path.empty()) {
+       loader_data.launch_path = "game:\\default.xex";
+     } else {

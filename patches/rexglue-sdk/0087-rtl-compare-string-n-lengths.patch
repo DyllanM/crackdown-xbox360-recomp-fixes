@@ -1,0 +1,30 @@
+RtlCompareStringN compares the real lengths, then orders by length.
+
+The function computed each string's length (0xFFFF means NUL-terminated, measured with strlen) into len1/len2 but
+then compared std::min(string_1_len, string_2_len), so the computed lengths were dead (clang
+-Wunused-but-set-variable) and a NUL-terminated string compared against a counted one used the 0xFFFF sentinel as a
+length. It now compares std::min(len1, len2) characters and, when they are equal, returns len1 - len2, as
+RtlCompareString does on Windows (compare up to the shorter length, then the shorter string sorts first) and as
+Xenia's RtlCompareStringN does. Before, "abc" (3) and "abcd" (4) compared equal. Crackdown does not import this
+function; the change only affects titles that do.
+
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp b/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp
+index ddae230..fbc068b 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_rtl.cpp
+@@ -120,10 +120,14 @@ u32 RtlCompareStringN_entry(mapped_string string_1, u32 string_1_len, mapped_str
+   if (string_2_len == 0xFFFF) {
+     len2 = uint32_t(std::strlen(string_2));
+   }
+-  auto len = std::min(string_1_len, string_2_len);
++  auto len = std::min(len1, len2);
+ 
+   int ret = case_insensitive ? rex::string::compare_case_n(string_1, string_2, len)
+                              : std::strncmp(string_1, string_2, len);
++  // Equal over the shorter length: the shorter string sorts first.
++  if (ret == 0) {
++    ret = int(len1) - int(len2);
++  }
+ 
+   return ret;
+ }

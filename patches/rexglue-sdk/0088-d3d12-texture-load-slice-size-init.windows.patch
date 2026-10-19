@@ -1,0 +1,21 @@
+D3D12 texture load: host_slice_size_base starts at 0 (clang -Wuninitialized false positive).
+
+LoadTextureDataFromResidentMemoryImpl writes host_slice_size_base in the loop over loop_level_first..loop_level_last
+through a conditional lvalue, `(is_base ? host_slice_size_base : host_slice_sizes_mips[level]) = ...`, which clang
+does not track. The reads (the dispatch loop over the same loop levels, and the copy loop where level 0 is in range
+only when loop_level_first is 0) only happen for is_base levels the first loop has written, so the warning is a false
+positive. Initializing it to 0 removes the warning at no cost and changes nothing.
+
+diff --git a/src/graphics/d3d12/texture_cache.cpp b/src/graphics/d3d12/texture_cache.cpp
+index 1ba0de7..fb561e2 100644
+--- a/src/graphics/d3d12/texture_cache.cpp
++++ b/src/graphics/d3d12/texture_cache.cpp
+@@ -1705,7 +1705,7 @@ bool D3D12TextureCache::LoadTextureDataFromResidentMemoryImpl(Texture& texture,
+   }
+   UINT64 copy_buffer_size = 0;
+   D3D12_PLACED_SUBRESOURCE_FOOTPRINT host_slice_layout_base;
+-  UINT64 host_slice_size_base;
++  UINT64 host_slice_size_base = 0;
+   // Indexing is the same as for guest stored mips:
+   // 1...min(level_last, level_packed) if level_packed is not 0, or only 0 if
+   // level_packed == 0.

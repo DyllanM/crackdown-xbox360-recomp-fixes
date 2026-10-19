@@ -1,0 +1,137 @@
+Warning cleanup, Windows code: spelling only, no behaviour change.
+
+The Windows-only counterpart of 0089 and 0091.
+- -Wmissing-field-initializers (36 occurrences, d3d12_util.h is included by 12 files): the three
+  D3D12_HEAP_PROPERTIES constants spell out the fields they left zero (D3D12_CPU_PAGE_PROPERTY_UNKNOWN and
+  D3D12_MEMORY_POOL_UNKNOWN are 0, node masks 0).
+- -Wpessimizing-move (d3d12/pipeline_cache.cpp): no std::move around a returned temporary.
+- -Wsign-compare (d3d12_provider.cpp): d3d12_adapter is compared as uint32_t after the existing >= 0 check.
+- -Wunused-lambda-capture (d3d12/command_processor.cpp): kQueryFinished is a constant expression.
+- -Winconsistent-missing-override (threading_win.cpp): the GClock SetRepeatingAt overload is marked override like
+  its siblings; it already overrode the virtual in rex/thread.h, so the vtable is unchanged.
+- -Wmicrosoft-cast (xinput_input_driver.cpp): GetProcAddress results are cast to the void* members explicitly.
+- -Wunused-variable: d3d12_immediate_drawer.cpp drops an unused reference to the emplaced upload;
+  d3d12_presenter.cpp marks temporal_effect_selected [[maybe_unused]] (only read when FidelityFX is built in).
+
+diff --git a/include/rex/ui/d3d12/d3d12_util.h b/include/rex/ui/d3d12/d3d12_util.h
+index 364690d..8117c8c 100644
+--- a/include/rex/ui/d3d12/d3d12_util.h
++++ b/include/rex/ui/d3d12/d3d12_util.h
+@@ -21,9 +21,12 @@ namespace util {
+ using DescriptorCpuGpuHandlePair =
+     std::pair<D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE>;
+ 
+-inline constexpr D3D12_HEAP_PROPERTIES kHeapPropertiesDefault = {D3D12_HEAP_TYPE_DEFAULT};
+-inline constexpr D3D12_HEAP_PROPERTIES kHeapPropertiesUpload = {D3D12_HEAP_TYPE_UPLOAD};
+-inline constexpr D3D12_HEAP_PROPERTIES kHeapPropertiesReadback = {D3D12_HEAP_TYPE_READBACK};
++inline constexpr D3D12_HEAP_PROPERTIES kHeapPropertiesDefault = {
++    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
++inline constexpr D3D12_HEAP_PROPERTIES kHeapPropertiesUpload = {
++    D3D12_HEAP_TYPE_UPLOAD, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
++inline constexpr D3D12_HEAP_PROPERTIES kHeapPropertiesReadback = {
++    D3D12_HEAP_TYPE_READBACK, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+ 
+ template <typename T>
+ bool ReleaseAndNull(T& object) {
+diff --git a/src/core/threading_win.cpp b/src/core/threading_win.cpp
+index 8559f6a..3793c56 100644
+--- a/src/core/threading_win.cpp
++++ b/src/core/threading_win.cpp
+@@ -358,7 +358,7 @@ class Win32Timer : public Win32Handle<Timer> {
+     return SetRepeatingAt(WClock_::now() + rel_time, period, std::move(opt_callback));
+   }
+   bool SetRepeatingAt(GClock_::time_point due_time, std::chrono::milliseconds period,
+-                      std::function<void()> opt_callback = nullptr) {
++                      std::function<void()> opt_callback = nullptr) override {
+     return SetRepeatingAt(std::chrono::clock_cast<WClock_>(due_time), period,
+                           std::move(opt_callback));
+   }
+diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
+index 88a01f0..5940bbd 100644
+--- a/src/graphics/d3d12/command_processor.cpp
++++ b/src/graphics/d3d12/command_processor.cpp
+@@ -205,7 +205,7 @@ bool D3D12CommandProcessor::ExecutePacketType3_EVENT_WRITE_ZPD(memory::RingBuffe
+     return true;
+   }
+ 
+-  auto write_fallback_result = [sample_counts, kQueryFinished]() -> bool {
++  auto write_fallback_result = [sample_counts]() -> bool {
+     auto fake_sample_count = REXCVAR_GET(query_occlusion_fake_sample_count);
+     if (fake_sample_count < 0) {
+       return true;
+diff --git a/src/graphics/d3d12/pipeline_cache.cpp b/src/graphics/d3d12/pipeline_cache.cpp
+index dca324d..880cb4b 100644
+--- a/src/graphics/d3d12/pipeline_cache.cpp
++++ b/src/graphics/d3d12/pipeline_cache.cpp
+@@ -104,7 +104,7 @@ PipelineCache::PipelineCache(D3D12CommandProcessor& command_processor,
+                                            render_target_cache_.host_scale_quarters_y());
+ 
+   if (edram_rov_used) {
+-    depth_only_pixel_shader_ = std::move(shader_translator_->CreateDepthOnlyPixelShader());
++    depth_only_pixel_shader_ = shader_translator_->CreateDepthOnlyPixelShader();
+   }
+ }
+ 
+diff --git a/src/input/xinput/xinput_input_driver.cpp b/src/input/xinput/xinput_input_driver.cpp
+index a6a1da9..45c242a 100644
+--- a/src/input/xinput/xinput_input_driver.cpp
++++ b/src/input/xinput/xinput_input_driver.cpp
+@@ -115,12 +115,12 @@ X_STATUS XinputInputDriver::Setup() {
+   }
+ 
+   module_ = module;
+-  XInputGetCapabilities_ = xigc;
+-  XInputGetState_ = xigs;
+-  XInputGetStateEx_ = xigsEx;
+-  XInputGetKeystroke_ = xigk;
+-  XInputSetState_ = xiss;
+-  XInputEnable_ = xie;
++  XInputGetCapabilities_ = reinterpret_cast<void*>(xigc);
++  XInputGetState_ = reinterpret_cast<void*>(xigs);
++  XInputGetStateEx_ = reinterpret_cast<void*>(xigsEx);
++  XInputGetKeystroke_ = reinterpret_cast<void*>(xigk);
++  XInputSetState_ = reinterpret_cast<void*>(xiss);
++  XInputEnable_ = reinterpret_cast<void*>(xie);
+ 
+   return X_STATUS_SUCCESS;
+ }
+diff --git a/src/ui/d3d12/d3d12_immediate_drawer.cpp b/src/ui/d3d12/d3d12_immediate_drawer.cpp
+index ce654c8..55f5ffc 100644
+--- a/src/ui/d3d12/d3d12_immediate_drawer.cpp
++++ b/src/ui/d3d12/d3d12_immediate_drawer.cpp
+@@ -277,8 +277,7 @@ std::unique_ptr<ImmediateTexture> D3D12ImmediateDrawer::CreateTexture(uint32_t w
+         // While the upload has not been yet completed, keep a reference to the
+         // resource because its lifetime is not tied to that of the
+         // ImmediateTexture (and thus to context's submissions) now.
+-        PendingTextureUpload& pending_upload =
+-            texture_uploads_pending_.emplace_back(resource.Get(), upload_buffer.Get());
++        texture_uploads_pending_.emplace_back(resource.Get(), upload_buffer.Get());
+       } else {
+         REXLOG_ERROR(
+             "D3D12ImmediateDrawer: Failed to map an upload buffer for a {}x{} "
+diff --git a/src/ui/d3d12/d3d12_presenter.cpp b/src/ui/d3d12/d3d12_presenter.cpp
+index 306118e..5bb05c0 100644
+--- a/src/ui/d3d12/d3d12_presenter.cpp
++++ b/src/ui/d3d12/d3d12_presenter.cpp
+@@ -789,7 +789,7 @@ Presenter::PaintResult D3D12Presenter::PaintAndPresentImpl(bool execute_ui_drawe
+       // involved are consistent.
+       D3D12_GPU_DESCRIPTOR_HANDLE view_heap_gpu_start =
+           view_heap->GetGPUDescriptorHandleForHeapStart();
+-      bool temporal_effect_selected = false;
++      [[maybe_unused]] bool temporal_effect_selected = false;
+ #if defined(REX_HAS_FIDELITYFX_RUNTIME) && REX_HAS_FIDELITYFX_RUNTIME
+       temporal_effect_selected =
+           guest_output_paint_config.GetEffect() == GuestOutputPaintConfig::Effect::kFsr2 ||
+diff --git a/src/ui/d3d12/d3d12_provider.cpp b/src/ui/d3d12/d3d12_provider.cpp
+index 7f30a54..3a72ebe 100644
+--- a/src/ui/d3d12/d3d12_provider.cpp
++++ b/src/ui/d3d12/d3d12_provider.cpp
+@@ -296,7 +296,7 @@ bool D3D12Provider::Initialize() {
+       if (SUCCEEDED(pfn_d3d12_create_device_(adapter, D3D_FEATURE_LEVEL_11_0, _uuidof(ID3D12Device),
+                                              nullptr))) {
+         if (REXCVAR_GET(d3d12_adapter) >= 0) {
+-          if (adapter_index == REXCVAR_GET(d3d12_adapter)) {
++          if (adapter_index == uint32_t(REXCVAR_GET(d3d12_adapter))) {
+             break;
+           }
+         } else if (REXCVAR_GET(d3d12_adapter) == -2) {

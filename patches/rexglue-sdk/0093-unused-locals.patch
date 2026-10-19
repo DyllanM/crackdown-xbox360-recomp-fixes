@@ -1,0 +1,228 @@
+Warning cleanup: unused locals (clang -Wunused-variable, -Wunused-but-set-variable, -Wunused-function).
+
+Locals whose initializers have no side effects are removed: conversion.cpp bytes_per_block, xam_user.cpp size and
+o, mmio_handler.cpp rex_w, object_table.cpp result, xex_module.cpp mem_size, input_size, sec_header and data,
+settings_overlay.cpp display_label, virtual_file_system.cpp created (set, never read) and packet_disassembler.cpp
+address (set, never read). Locals that read guest memory (xboxkrnl_debug.cpp, kept for inspection at the debug
+break, and xam_app.cpp), are only used when FidelityFX is built in (presenter.cpp), or are the only use of a
+parameter (xex_module.cpp exe_length, xam_content.cpp content_data; removing them would only move the warning to
+the parameter) are marked [[maybe_unused]] instead, so nothing about their evaluation changes. The unused static
+LifecycleBadge() in settings_overlay.cpp is marked [[maybe_unused]] too.
+
+diff --git a/src/filesystem/virtual_file_system.cpp b/src/filesystem/virtual_file_system.cpp
+index aa302af..2ebaa2c 100644
+--- a/src/filesystem/virtual_file_system.cpp
++++ b/src/filesystem/virtual_file_system.cpp
+@@ -280,10 +280,7 @@ X_STATUS VirtualFileSystem::OpenFile(Entry* root_entry, const std::string_view p
+     desired_access = FileAccess::kGenericRead | FileAccess::kFileReadData;
+   }
+ 
+-  bool created = false;
+   if (!entry) {
+-    // Remember that we are creating this new, instead of replacing.
+-    created = true;
+     *out_action = FileAction::kCreated;
+   } else {
+     // May need to delete, if it exists.
+diff --git a/src/graphics/packet_disassembler.cpp b/src/graphics/packet_disassembler.cpp
+index 7cea2cc..f2fec20 100644
+--- a/src/graphics/packet_disassembler.cpp
++++ b/src/graphics/packet_disassembler.cpp
+@@ -302,8 +302,6 @@ bool PacketDisassembler::DisasmPacketType3(const uint8_t* base_ptr, uint32_t pac
+       // load constants from memory
+       static const PacketTypeInfo op_info = {PacketCategory::kGeneric, "PM4_LOAD_ALU_CONSTANT"};
+       out_info->type_info = &op_info;
+-      uint32_t address = memory::load_and_swap<uint32_t>(ptr + 0);
+-      address &= 0x3FFFFFFF;
+       uint32_t offset_type = memory::load_and_swap<uint32_t>(ptr + 4);
+       uint32_t index = offset_type & 0x7FF;
+       uint32_t size_dwords = memory::load_and_swap<uint32_t>(ptr + 8);
+diff --git a/src/graphics/pipeline/texture/conversion.cpp b/src/graphics/pipeline/texture/conversion.cpp
+index 608b9a0..a0d6b6a 100644
+--- a/src/graphics/pipeline/texture/conversion.cpp
++++ b/src/graphics/pipeline/texture/conversion.cpp
+@@ -78,7 +78,6 @@ void ConvertTexelCTX1ToR8G8(xenos::Endian endian, void* output, const void* inpu
+ }
+ 
+ void ConvertTexelDXT3AToDXT3(xenos::Endian endian, void* output, const void* input, size_t length) {
+-  const uint32_t bytes_per_block = 16;
+   auto output_bytes = static_cast<uint8_t*>(output);
+   CopySwapBlock(endian, &output_bytes[0], input, 8);
+   std::memset(&output_bytes[8], 0, 8);
+diff --git a/src/kernel/xam/apps/xam_app.cpp b/src/kernel/xam/apps/xam_app.cpp
+index 7f10ece..2510fcb 100644
+--- a/src/kernel/xam/apps/xam_app.cpp
++++ b/src/kernel/xam/apps/xam_app.cpp
+@@ -94,7 +94,7 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
+       }* data = reinterpret_cast<message_data*>(buffer);
+       assert_true(buffer_length == sizeof(message_data));
+       auto unk = memory_->TranslateVirtual<rex::be<uint32_t>*>(data->unk_00);
+-      auto adr = *unk;
++      [[maybe_unused]] auto adr = *unk;
+       REXKRNL_DEBUG("XamApp(0x00022005)(%.8X, %.8X)", (uint32_t)data->unk_00,
+                     (uint32_t)data->unk_04);
+       return X_E_SUCCESS;
+diff --git a/src/kernel/xam/xam_content.cpp b/src/kernel/xam/xam_content.cpp
+index 1fb1e16..510a246 100644
+--- a/src/kernel/xam/xam_content.cpp
++++ b/src/kernel/xam/xam_content.cpp
+@@ -46,7 +46,7 @@ u32 XamContentGetLicenseMask_entry(mapped_u32 mask_ptr, mapped_void overlapped_p
+ 
+ u32 XamContentResolve_entry(u32 user_index, mapped_void content_data_ptr, mapped_void buffer_ptr,
+                             u32 buffer_size, u32 unk1, u32 unk2, u32 unk3) {
+-  auto content_data = content_data_ptr.as<XCONTENT_DATA*>();
++  [[maybe_unused]] auto content_data = content_data_ptr.as<XCONTENT_DATA*>();
+ 
+   // Result of buffer_ptr is sent to RtlInitAnsiString.
+   // buffer_size is usually 260 (max path).
+diff --git a/src/kernel/xam/xam_user.cpp b/src/kernel/xam/xam_user.cpp
+index a0a248c..fef0ae9 100644
+--- a/src/kernel/xam/xam_user.cpp
++++ b/src/kernel/xam/xam_user.cpp
+@@ -543,14 +543,13 @@ class XStaticAchievementEnumerator : public XEnumerator {
+       return X_ERROR_NO_MORE_FILES;
+     }
+ 
+-    size_t size = count * item_size();
+ 
+     auto details = reinterpret_cast<X_ACHIEVEMENT_DETAILS*>(buffer_data);
+     size_t string_offset = items_per_enumerate() * sizeof(X_ACHIEVEMENT_DETAILS);
+     auto string_buffer =
+         StringBuffer{buffer_ptr + static_cast<uint32_t>(string_offset), &buffer_data[string_offset],
+                      count * X_ACHIEVEMENT_DETAILS::kStringBufferSize};
+-    for (size_t i = 0, o = current_item_; i < count; ++i, ++current_item_) {
++    for (size_t i = 0; i < count; ++i, ++current_item_) {
+       const auto& item = items_[current_item_];
+       details[i].id = item.id;
+       details[i].label_ptr = !!(flags_ & 1) ? AppendString(string_buffer, item.label) : 0;
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_debug.cpp b/src/kernel/xboxkrnl/xboxkrnl_debug.cpp
+index af20283..56a7a18 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_debug.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_debug.cpp
+@@ -116,12 +116,13 @@ void HandleCppException(ppc_ptr_t<X_EXCEPTION_RECORD> record) {
+ 
+   auto thrown_ptr = record->exception_information[1];
+   auto thrown = REX_KERNEL_MEMORY()->TranslateVirtual(thrown_ptr);
+-  auto vftable_ptr = *reinterpret_cast<rex::be<uint32_t>*>(thrown);
++  [[maybe_unused]] auto vftable_ptr = *reinterpret_cast<rex::be<uint32_t>*>(thrown);
+ 
+   auto throw_info_ptr = record->exception_information[2];
+   auto throw_info = REX_KERNEL_MEMORY()->TranslateVirtual<x_s__ThrowInfo*>(throw_info_ptr);
+-  auto catchable_types = REX_KERNEL_MEMORY()->TranslateVirtual<x_s__CatchableTypeArray*>(
+-      throw_info->catchable_type_array_ptr);
++  [[maybe_unused]] auto catchable_types =
++      REX_KERNEL_MEMORY()->TranslateVirtual<x_s__CatchableTypeArray*>(
++          throw_info->catchable_type_array_ptr);
+ 
+   rex::debug::Break();
+ }
+diff --git a/src/system/mmio_handler.cpp b/src/system/mmio_handler.cpp
+index 2b93005..9bd25e5 100644
+--- a/src/system/mmio_handler.cpp
++++ b/src/system/mmio_handler.cpp
+@@ -186,7 +186,6 @@ bool MMIOHandler::TryDecodeLoadStore(const uint8_t* p, DecodedLoadStore& decoded
+   uint8_t rex_b = rex & 0b0001;
+   uint8_t rex_x = rex & 0b0010;
+   uint8_t rex_r = rex & 0b0100;
+-  uint8_t rex_w = rex & 0b1000;
+ 
+   // http://www.sandpile.org/x86/opc_rm.htm
+   // http://www.sandpile.org/x86/opc_sib.htm
+diff --git a/src/system/util/object_table.cpp b/src/system/util/object_table.cpp
+index 6fbabd2..292dad8 100644
+--- a/src/system/util/object_table.cpp
++++ b/src/system/util/object_table.cpp
+@@ -176,8 +176,6 @@ X_STATUS ObjectTable::ReleaseHandle(X_HANDLE handle) {
+ }
+ 
+ X_STATUS ObjectTable::RemoveHandle(X_HANDLE handle) {
+-  X_STATUS result = X_STATUS_SUCCESS;
+-
+   handle = TranslateHandle(handle);
+   if (!handle) {
+     return X_STATUS_INVALID_HANDLE;
+diff --git a/src/system/xex_module.cpp b/src/system/xex_module.cpp
+index 0726516..4114c7f 100644
+--- a/src/system/xex_module.cpp
++++ b/src/system/xex_module.cpp
+@@ -242,7 +242,6 @@ int XexModule::ApplyPatch(XexModule* module) {
+         patch_header->delta_headers_target_offset + patch_header->delta_headers_source_size;
+   }
+ 
+-  size_t mem_size = module->xex_header_mem_.size();
+ 
+   // Increase xex header buffer length if needed
+   if (header_target_size > module->xex_header_mem_.size()) {
+@@ -534,7 +533,8 @@ int XexModule::ReadImageUncompressed(const void* xex_addr, size_t xex_length) {
+ }
+ 
+ int XexModule::ReadImageBasicCompressed(const void* xex_addr, size_t xex_length) {
+-  const uint32_t exe_length = static_cast<uint32_t>(xex_length - xex_header()->header_size);
++  [[maybe_unused]] const uint32_t exe_length =
++      static_cast<uint32_t>(xex_length - xex_header()->header_size);
+   const uint8_t* source_buffer = (const uint8_t*)xex_addr + xex_header()->header_size;
+   const uint8_t* p = source_buffer;
+ 
+@@ -640,7 +640,6 @@ int XexModule::ReadImageCompressed(const void* xex_addr, size_t xex_length) {
+   // Decrypt (if needed).
+   bool free_input = false;
+   const uint8_t* input_buffer = exe_buffer;
+-  size_t input_size = exe_length;
+ 
+   switch (opt_file_format_info()->encryption_type) {
+     case XEX_ENCRYPTION_NONE:
+@@ -885,8 +884,6 @@ bool XexModule::Load(const std::string_view name, const std::string_view path, c
+   // Read/convert XEX1/XEX2 security info to a common format
+   ReadSecurityInfo();
+ 
+-  auto sec_header = xex_security_info();
+-
+   // Try setting our base_address based on XEX_HEADER_IMAGE_BASE_ADDRESS, fall
+   // back to xex_security_info otherwise
+   base_address_ = xex_security_info()->load_address;
+@@ -898,7 +895,6 @@ bool XexModule::Load(const std::string_view name, const std::string_view path, c
+   name_ = name;
+   path_ = path;
+ 
+-  uint8_t* data = memory()->TranslateVirtual(base_address_);
+ 
+   // Load in the XEX basefile
+   // We'll try using both XEX2 keys to see if any give a valid PE
+diff --git a/src/ui/overlay/settings_overlay.cpp b/src/ui/overlay/settings_overlay.cpp
+index 4ede107..128ba9a 100644
+--- a/src/ui/overlay/settings_overlay.cpp
++++ b/src/ui/overlay/settings_overlay.cpp
+@@ -29,7 +29,7 @@ SettingsDialog::SettingsDialog(ImGuiDrawer* imgui_drawer, std::filesystem::path
+ 
+ SettingsDialog::~SettingsDialog() {}
+ 
+-static const char* LifecycleBadge(rex::cvar::Lifecycle lc) {
++[[maybe_unused]] static const char* LifecycleBadge(rex::cvar::Lifecycle lc) {
+   switch (lc) {
+     case rex::cvar::Lifecycle::kHotReload:
+       return " [live]";
+@@ -321,9 +321,6 @@ void SettingsDialog::OnDraw(ImGuiIO& /*io*/) {
+ 
+     std::string current_val = entry.getter();
+ 
+-    // Use description as display label if available, otherwise CVAR name
+-    const char* display_label =
+-        (!entry.description.empty()) ? entry.description.c_str() : entry.name.c_str();
+ 
+     if (is_keybind_category(entry.category)) {
+       // Grey out controller keybinds when MnK mode is disabled
+diff --git a/src/ui/presenter.cpp b/src/ui/presenter.cpp
+index 1a3f891..3843648 100644
+--- a/src/ui/presenter.cpp
++++ b/src/ui/presenter.cpp
+@@ -1054,8 +1054,8 @@ Presenter::GuestOutputPaintFlow Presenter::GetGuestOutputPaintFlow(
+   // larger than that as they include the overscan area that will be outside the
+   // screen. Make sure the intermediate images can't be larger than the maximum
+   // render target size.
+-  uint32_t output_width_clamped = std::min(output_width, max_rt_width);
+-  uint32_t output_height_clamped = std::min(output_height, max_rt_height);
++  [[maybe_unused]] uint32_t output_width_clamped = std::min(output_width, max_rt_width);
++  [[maybe_unused]] uint32_t output_height_clamped = std::min(output_height, max_rt_height);
+ 
+ #if defined(REX_HAS_FIDELITYFX_SDK)
+   if (config.GetEffect() == GuestOutputPaintConfig::Effect::kCas ||

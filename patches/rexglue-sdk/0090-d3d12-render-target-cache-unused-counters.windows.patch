@@ -1,0 +1,22 @@
+D3D12 render target cache: drop the direct resolve success/fallback counters left unused by 0034.
+
+0034-d3d12-submissions.windows.patch removed the direct_host_resolve preflight from D3D12RenderTargetCache::Resolve,
+which was the only code that incremented direct_resolve_success_count_ and direct_resolve_fallback_count_; nothing
+reads them, so clang reported them with -Wunused-private-field. This removes the two declarations, as
+0039-vulkan-render-target-transfers.linux.patch does for the Vulkan cache. D3D12RenderTargetCache is private to the
+GPU plugin (owned through a pointer by D3D12CommandProcessor); neither the generated game code nor src/ includes its
+header, so the layout change stays inside rexgpu-xenos, which is rebuilt as a whole.
+
+diff --git a/include/rex/graphics/d3d12/render_target_cache.h b/include/rex/graphics/d3d12/render_target_cache.h
+index c84bce2..e5170a2 100644
+--- a/include/rex/graphics/d3d12/render_target_cache.h
++++ b/include/rex/graphics/d3d12/render_target_cache.h
+@@ -855,8 +855,6 @@ class D3D12RenderTargetCache final : public RenderTargetCache {
+                      DirectResolvePipelineKey::Hasher>
+       direct_resolve_pipelines_;
+   uint64_t direct_resolve_attempt_count_ = 0;
+-  uint64_t direct_resolve_success_count_ = 0;
+-  uint64_t direct_resolve_fallback_count_ = 0;
+ 
+   // Parameter 0 - 2 root constants (red, green).
+   ID3D12RootSignature* uint32_rtv_clear_root_signature_ = nullptr;

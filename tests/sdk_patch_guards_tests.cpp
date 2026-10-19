@@ -61,6 +61,58 @@ void TestMassiveCountHookIsWired() {
   CHECK(cmake.find("src/massive_server_guard.cpp") != std::string::npos);
 }
 
+void TestXamLaunchTitleOwnsPath() {
+  const std::string patch = ReadPatch("0086-");
+  CHECK(!patch.empty());
+  CHECK(HasLine(patch, "-    auto path = raw_name_ptr.value();"));
+  CHECK(HasLine(patch, "+    std::string path(raw_name_ptr.value());"));
+  CHECK(patch.find("src/kernel/xam/xam_info.cpp") != std::string::npos);
+}
+
+void TestCompareStringNUsesRealLengths() {
+  const std::string patch = ReadPatch("0087-");
+  CHECK(!patch.empty());
+  CHECK(HasLine(patch, "-  auto len = std::min(string_1_len, string_2_len);"));
+  CHECK(HasLine(patch, "+  auto len = std::min(len1, len2);"));
+  CHECK(HasLine(patch, "+    ret = int(len1) - int(len2);"));
+}
+
+void TestScissorEdgesCompareSigned() {
+  const std::string patch = ReadPatch("0089-");
+  CHECK(!patch.empty());
+  CHECK(HasLine(patch, "+        if (scissor_bottom >= int32_t(xenos::kTexture2DCubeMaxWidthHeight)) {"));
+  CHECK(HasLine(patch, "+          if (scissor_right >= int32_t(xenos::kTexture2DCubeMaxWidthHeight)) {"));
+}
+
+void TestD3D12TextureSliceSizeInitialised() {
+  const std::string patch = ReadPatch("0088-");
+  CHECK(!patch.empty());
+  CHECK(HasLine(patch, "-  UINT64 host_slice_size_base;"));
+  CHECK(HasLine(patch, "+  UINT64 host_slice_size_base = 0;"));
+}
+
+void TestUnusedResolveCountersRemoved() {
+  const std::string patch = ReadPatch("0090-");
+  CHECK(!patch.empty());
+  CHECK(HasLine(patch, "-  uint64_t direct_resolve_success_count_ = 0;"));
+  CHECK(HasLine(patch, "-  uint64_t direct_resolve_fallback_count_ = 0;"));
+}
+
+void TestMakePacketType0SetsOneRegister() {
+  const std::string patch = ReadPatch("0091-");
+  CHECK(!patch.empty());
+  CHECK(HasLine(patch,
+                "+  return (0u << 30) | (((count - 1) & 0x3FFF) << 16) | (uint32_t(one_reg) << 15) | (index & 0x7FFF);"));
+}
+
+void TestUnusedLocalsKeepGuestReads() {
+  const std::string patch = ReadPatch("0093-");
+  CHECK(!patch.empty());
+  CHECK(HasLine(patch, "+  [[maybe_unused]] auto vftable_ptr = *reinterpret_cast<rex::be<uint32_t>*>(thrown);"));
+  CHECK(HasLine(patch, "+[[maybe_unused]] static const char* LifecycleBadge(rex::cvar::Lifecycle lc) {"));
+  CHECK(HasLine(patch, "-  uint8_t rex_w = rex & 0b1000;"));
+}
+
 void TestInvalidFetchPatchOnlyReplacesTheWarning() {
   const std::string patch = ReadPatch("0064-");
   CHECK(!patch.empty());
@@ -94,6 +146,13 @@ int main() {
   TestXamEnumerateCountStartsAtZero();
   TestPatchedSourceHasNoUninitialisedCount();
   TestMassiveCountHookIsWired();
+  TestXamLaunchTitleOwnsPath();
+  TestCompareStringNUsesRealLengths();
+  TestScissorEdgesCompareSigned();
+  TestD3D12TextureSliceSizeInitialised();
+  TestUnusedResolveCountersRemoved();
+  TestMakePacketType0SetsOneRegister();
+  TestUnusedLocalsKeepGuestReads();
   TestInvalidFetchPatchOnlyReplacesTheWarning();
   return check::Finish("sdk_patch_guards_tests");
 }
