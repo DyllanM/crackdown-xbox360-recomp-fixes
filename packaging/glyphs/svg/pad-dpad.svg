@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<!-- D-pad. Original art for crackdown-xbox360-recompiled. -->
+<path d="M43 16Q43 8 51 8H77Q85 8 85 16V43H112Q120 43 120 51V77Q120 85 112 85H85V112Q85 120 77 120H51Q43 120 43 112V85H16Q8 85 8 77V51Q8 43 16 43H43Z" fill="#30343A" stroke="#080808" stroke-width="12" stroke-linejoin="round" paint-order="stroke"/>
+<path d="M43 16Q43 8 51 8H77Q85 8 85 16V43H112Q120 43 120 51V77Q120 85 112 85H85V112Q85 120 77 120H51Q43 120 43 112V85H16Q8 85 8 77V51Q8 43 16 43H43Z" fill="none" stroke="#767D87" stroke-width="3" stroke-linejoin="round"/>
+<g transform="rotate(0 64 64)"><path d="M64 19L76 36H52Z" fill="#7C838D"/></g>
+<g transform="rotate(90 64 64)"><path d="M64 19L76 36H52Z" fill="#7C838D"/></g>
+<g transform="rotate(180 64 64)"><path d="M64 19L76 36H52Z" fill="#7C838D"/></g>
+<g transform="rotate(270 64 64)"><path d="M64 19L76 36H52Z" fill="#7C838D"/></g>
+<circle cx="64" cy="64" r="9" fill="#1B1D21"/>
+</svg>

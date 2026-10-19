@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<!-- BACK: View button (two overlapping windows). Original art for crackdown-xbox360-recompiled. -->
+<circle cx="64" cy="64" r="61" fill="#080808"/>
+<circle cx="64" cy="64" r="55" fill="#30343A"/>
+<circle cx="64" cy="64" r="53.5" fill="none" stroke="#767D87" stroke-width="3"/>
+<rect x="33" y="39" width="40" height="31" rx="7" fill="none" stroke="#F5F6F7" stroke-width="7"/>
+<rect x="53" y="57" width="42" height="32" rx="7" fill="#30343A" stroke="#F5F6F7" stroke-width="7"/>
+</svg>

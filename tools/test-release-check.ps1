@@ -21,9 +21,10 @@ $failures = 0
 try {
     foreach ($case in $Cases.Keys) {
         $stage = Join-Path $StageRoot ($case -replace '\W', '_')
-        New-Item -ItemType Directory -Force (Join-Path $stage 'licenses') | Out-Null
+        New-Item -ItemType Directory -Force (Join-Path $stage 'licenses'), (Join-Path $stage 'glyphs') | Out-Null
         foreach ($leaf in 'crackdown.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'crackdown.toml', 'README.txt', 'LICENSE',
-            'licenses\ReXGlue-LICENSE.txt', 'licenses\THIRD-PARTY-LICENSES.txt') {
+            'licenses\ReXGlue-LICENSE.txt', 'licenses\THIRD-PARTY-LICENSES.txt', 'glyphs\button_glyphs.dds',
+            'glyphs\button_glyphs.toml') {
             Set-Content -LiteralPath (Join-Path $stage $leaf) -Value 'placeholder'
         }
         $extra = $Cases[$case]

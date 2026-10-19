@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<!-- R trigger. Original art for crackdown-xbox360-recompiled. -->
+<path d="M34 122Q18 122 18 106V44C18 20 38 6 64 6C90 6 110 20 110 44V106Q110 122 94 122Z" fill="#30343A" stroke="#080808" stroke-width="10" stroke-linejoin="round" paint-order="stroke"/>
+<path d="M34 122Q18 122 18 106V44C18 20 38 6 64 6C90 6 110 20 110 44V106Q110 122 94 122Z" fill="none" stroke="#767D87" stroke-width="3"/>
+<text x="64" y="87.0" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="48" fill="#F5F6F7">RT</text>
+</svg>

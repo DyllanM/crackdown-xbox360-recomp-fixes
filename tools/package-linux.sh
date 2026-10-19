@@ -136,6 +136,8 @@ rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$DOC"
 cp "$BIN/crackdown" "$BIN/librexruntime.so" "$BIN/librexgpu-xenos.so" "$BIN/crackdown.toml" \
   "$APPDIR/usr/bin/"
+mkdir -p "$APPDIR/usr/bin/glyphs"
+cp "$BIN/glyphs/button_glyphs.dds" "$BIN/glyphs/button_glyphs.toml" "$APPDIR/usr/bin/glyphs/"
 # Debug sections carry the build machine's folders.
 strip --strip-unneeded "$APPDIR/usr/bin/crackdown"
 # ReXGlue needs GLIBCXX_3.4.32 (GCC 13); AppRun uses this copy only on systems without it.
@@ -168,7 +170,7 @@ cp "$ICONS/app-icon-256.png" "$APPDIR/crackdown.png"
 cp "$ICONS/app-icon-256.png" "$APPDIR/.DirIcon"
 chmod 755 "$APPDIR/AppRun" "$APPDIR/usr/bin/crackdown"
 chmod 644 "$APPDIR/"*.desktop "$APPDIR/"*.png "$APPDIR/.DirIcon" "$APPDIR/usr/bin/"*.so \
-  "$APPDIR/usr/bin/crackdown.toml" "$APPDIR/usr/lib/"* "$DOC/"*
+  "$APPDIR/usr/bin/crackdown.toml" "$APPDIR/usr/bin/glyphs/"* "$APPDIR/usr/lib/"* "$DOC/"*
 find "$THEME" -type f -exec chmod 644 {} +
 bash "$PATCHED" --check "$SDK" --staged "$APPDIR/usr/bin" || fail "the AppDir does not hold the patched ReXGlue libraries"
 
@@ -202,6 +204,9 @@ crackdown.png
 $APP_ID.desktop
 usr/bin/crackdown
 usr/bin/crackdown.toml
+usr/bin/glyphs
+usr/bin/glyphs/button_glyphs.dds
+usr/bin/glyphs/button_glyphs.toml
 usr/bin/librexgpu-xenos.so
 usr/bin/librexruntime.so
 usr/lib/libgcc_s.so.1

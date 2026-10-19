@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<!-- Online / network (generic globe, no platform logo). Original art for crackdown-xbox360-recompiled. -->
+<circle cx="64" cy="64" r="61" fill="#080808"/>
+<circle cx="64" cy="64" r="55" fill="#30343A"/>
+<circle cx="64" cy="64" r="53.5" fill="none" stroke="#767D87" stroke-width="3"/>
+<g fill="none" stroke="#F5F6F7" stroke-width="7"><circle cx="64" cy="64" r="31"/><ellipse cx="64" cy="64" rx="13" ry="31"/><path d="M35 52H93M35 76H93"/></g>
+</svg>

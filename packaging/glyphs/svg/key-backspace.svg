@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<!-- Key Backspace. Original art for crackdown-xbox360-recompiled. -->
+<rect x="8" y="8" width="112" height="112" rx="20" fill="#B4BAC2" stroke="#080808" stroke-width="8"/>
+<rect x="17" y="13" width="94" height="90" rx="13" fill="#F3F4F6"/>
+<path d="M48 38H90Q96 38 96 44V72Q96 78 90 78H48L30 58Z" fill="none" stroke="#16181B" stroke-width="7" stroke-linejoin="round"/><path d="M61 49L79 67M79 49L61 67" stroke="#16181B" stroke-width="7" stroke-linecap="round"/></svg>

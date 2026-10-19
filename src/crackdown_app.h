@@ -30,8 +30,10 @@
 #include "frame_counter.h"
 #include "frame_rate.h"
 #include "game_files.h"
+#include "glyph_overlay.h"
 #include "guest_fault_log.h"
 #include "internal_render_scale.h"
+#include "language_setting.h"
 #include "launcher.h"
 #include "log_filter.h"
 #include "log_path.h"
@@ -198,6 +200,8 @@ class CrackdownApp : public rex::ReXApp {
     if (runtime()) {
       MountCacheDevice(runtime()->file_system(), user_data_root());
       crackdown::InstallCrashDiagnostics(runtime()->virtual_membase());
+      crackdown::InstallGlyphOverlay(runtime()->file_system(), game_data_root(), user_data_root(),
+                                     crackdown::LanguageFor(REXCVAR_GET(crackdown_language)).key);
       // Crackdown has no local split screen and polls user 0 (XUSER_INDEX_ANY is pinned there), so every pad drives
       // user 0 instead of the default one-pad-per-user slots.
       if (auto* input = static_cast<rex::input::InputSystem*>(runtime()->input_system())) {

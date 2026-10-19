@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<!-- R stick, direction UL. Original art for crackdown-xbox360-recompiled. -->
+<circle cx="64" cy="64" r="42" fill="#080808"/>
+<circle cx="64" cy="64" r="37" fill="#30343A"/>
+<circle cx="64" cy="64" r="35.5" fill="none" stroke="#767D87" stroke-width="3"/>
+<circle cx="64" cy="64" r="27" fill="none" stroke="#7C838D" stroke-width="4"/>
+<text x="64" y="77.5" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="38" fill="#F5F6F7">R</text>
+<g transform="rotate(-45 64 64)"><path d="M64 1L78 22H50Z" fill="#F5F6F7" stroke="#080808" stroke-width="7" stroke-linejoin="round" paint-order="stroke"/></g>
+</svg>

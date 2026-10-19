@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<!-- R bumper. Original art for crackdown-xbox360-recompiled. -->
+<path d="M24 100Q8 100 8 84V64C8 42 30 28 58 28H104Q120 28 120 44V84Q120 100 104 100Z" fill="#30343A" stroke="#080808" stroke-width="10" stroke-linejoin="round" paint-order="stroke" transform="matrix(-1 0 0 1 128 0)"/>
+<path d="M24 100Q8 100 8 84V64C8 42 30 28 58 28H104Q120 28 120 44V84Q120 100 104 100Z" fill="none" stroke="#767D87" stroke-width="3" transform="matrix(-1 0 0 1 128 0)"/>
+<text x="60" y="82.8" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="50" fill="#F5F6F7">RB</text>
+</svg>

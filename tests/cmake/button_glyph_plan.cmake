@@ -1,0 +1,1 @@
+crackdown_add_test(button_glyph_plan_tests SOURCES button_glyph_plan_tests.cpp)

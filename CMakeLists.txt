@@ -188,10 +188,13 @@ set(CRACKDOWN_SOURCES
     src/cheats.cpp
     src/crash_report.cpp
     src/crt_native.cpp
+    src/font_atlas.cpp
+    src/font_rerender.cpp
     src/frame_counter.cpp
     src/frame_pacing.cpp
     src/frame_rate.cpp
     src/game_files.cpp
+    src/glyph_overlay.cpp
     src/gpu_fence_wait.cpp
     src/graphics_adapters.cpp
     src/guest_fault_log.cpp
@@ -323,6 +326,16 @@ add_custom_command(TARGET crackdown POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/config/crackdown.toml"
         "$<TARGET_FILE_DIR:crackdown>"
+    VERBATIM
+)
+
+# The button glyph sheet the font overlay reads from <exe dir>/glyphs (src/glyph_overlay.cpp).
+add_custom_command(TARGET crackdown POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:crackdown>/glyphs"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/glyphs/button_glyphs.dds"
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/glyphs/button_glyphs.toml"
+        "$<TARGET_FILE_DIR:crackdown>/glyphs"
     VERBATIM
 )
 

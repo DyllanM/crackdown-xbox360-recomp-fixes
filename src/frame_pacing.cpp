@@ -25,6 +25,7 @@
 
 #include "frame_pacing.h"
 #include "frame_timing.h"
+#include "glyph_overlay.h"
 #include "settings.h"
 
 REX_EXTERN(__imp__sub_826A7698);
@@ -209,6 +210,7 @@ REX_HOOK_RAW(sub_826A7698) {
   if (HighFrameRate(rate)) {
     SelectVariableStep(base, rate);
   }
+  crackdown::UpdateButtonGlyphs(base);
   __imp__sub_826A7698(ctx, base);
 }
 
