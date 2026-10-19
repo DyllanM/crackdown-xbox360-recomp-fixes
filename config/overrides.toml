@@ -26,6 +26,33 @@ name = "crackdown_massive_server_count_guard"
 registers = ["r1"]
 after_instruction = false
 
+# Keeps the 360x256 AudioCore bit-grid reads of sub_82252150 near their table at 0x82D33F98; a NaN angle converts
+# to an out-of-range row and column.
+[[midasm_hook]]
+address = 0x822541D8
+name = "crackdown_visibility_grid_guard"
+registers = ["r11", "r10", "r27", "r29"]
+after_instruction = false
+
+# The head look-at target and the audio listener built from it can go NaN after a ragdoll.
+[[midasm_hook]]
+address = 0x82252134
+name = "crackdown_audio_listener_guard"
+registers = ["r3", "r4"]
+after_instruction = false
+
+[[midasm_hook]]
+address = 0x822A026C
+name = "crackdown_look_target_guard"
+registers = ["r31"]
+after_instruction = false
+
+[[midasm_hook]]
+address = 0x822A2C50
+name = "crackdown_look_target_guard"
+registers = ["r31"]
+after_instruction = false
+
 # Sanitizes the mixed frame before XAudioSubmitRenderDriverFrame in sub_82A4BEF8; r4 is the frame address.
 [[midasm_hook]]
 address = 0x82A4BF40

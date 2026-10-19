@@ -1,0 +1,1 @@
+crackdown_add_test(visibility_grid_guard_tests SOURCES visibility_grid_guard_tests.cpp)

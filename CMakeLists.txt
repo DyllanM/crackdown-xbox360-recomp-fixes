@@ -201,6 +201,7 @@ set(CRACKDOWN_SOURCES
     src/log_filter.cpp
     src/log_path.cpp
     src/massive_server_guard.cpp
+    src/nan_guards.cpp
     src/platform.cpp
     src/session_log.cpp
     src/settings.cpp
@@ -208,6 +209,7 @@ set(CRACKDOWN_SOURCES
     src/title_compat.cpp
     src/title_language.cpp
     src/user_data.cpp
+    src/visibility_grid_guard.cpp
     src/window_host.cpp
     src/xdvdfs.cpp
     src/skip_intro.cpp
