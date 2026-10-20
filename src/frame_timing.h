@@ -149,6 +149,19 @@ constexpr uint32_t TakeWhole(double& total) {
   return whole;
 }
 
+// A frame's whole milliseconds for the title's integer frame-time sites, carrying the fraction like TakeWhole but
+// never 0: the camera divides by its time step, so a frame shorter than a millisecond takes one and the next frames
+// pay it back, keeping the total exact.
+constexpr uint32_t TakeFrameMs(double& total_ms) {
+  if (total_ms < 1.0) {
+    total_ms -= 1.0;
+    return 1;
+  }
+  const uint32_t whole = uint32_t(total_ms);
+  total_ms -= whole;
+  return whole;
+}
+
 // Host pacing for HostPacedFrameRate rates. A fixed rate releases frames on a grid of its period, so sleep overshoot
 // never accumulates, and steps exactly one period per frame; a frame later than a whole period restarts the grid and
 // steps the time it really took. Unlimited never waits and steps the measured time.

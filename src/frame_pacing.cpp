@@ -33,6 +33,7 @@ REX_EXTERN(__imp__sub_82324938);
 REX_EXTERN(__imp__sub_826B1150);
 REX_EXTERN(__imp__sub_826BC568);
 REX_EXTERN(__imp__sub_826BC3D0);
+REX_EXTERN(__imp__sub_823263D8);
 
 namespace {
 
@@ -56,6 +57,10 @@ constexpr uint32_t kSwapPresentIntervalMask = 0xF00;
 constexpr uint32_t kSwapImmediateAlways = 100;
 // The variable-step frame time the title's inline sites use without the replay branch.
 constexpr uint32_t kVariableStepFrameMs = 16;
+// The frame timer's published frame: a byte set once it has measured one, and that frame's milliseconds. With the
+// fixed step off, the inline sites read `[valid] ? [ms] : 16`.
+constexpr uint32_t kMeasuredFrameValidAddress = 0x82DE3FB0;
+constexpr uint32_t kMeasuredFrameMsAddress = 0x82D99128;
 
 std::atomic<uint32_t> g_step_bits{std::bit_cast<uint32_t>(1.0f / 60.0f)};
 std::atomic<uint32_t> g_frame_ms{kVariableStepFrameMs};
@@ -160,13 +165,13 @@ void BeginFrame(int rate) {
     const crackdown::FramePacer::Frame frame = g_pacer.Next(rate, now);
     WaitUntil(frame.release_ns);
     g_step = frame.step;
-    g_frame_ms_fraction += g_step.seconds * 1000.0;
-    g_frame_ms.store(crackdown::TakeWhole(g_frame_ms_fraction), std::memory_order_relaxed);
   } else {
     const double interval = g_console_last_ns ? double(now - g_console_last_ns) * 1e-9 : 0.0;
     g_console_last_ns = now;
     g_step = ConsolePacedStep(rate, interval);
   }
+  g_frame_ms_fraction += g_step.seconds * 1000.0;
+  g_frame_ms.store(crackdown::TakeFrameMs(g_frame_ms_fraction), std::memory_order_relaxed);
   g_step_bits.store(std::bit_cast<uint32_t>(g_step.seconds_f), std::memory_order_relaxed);
   g_original_steps.store(g_step.original_steps, std::memory_order_relaxed);
 }
@@ -234,6 +239,22 @@ REX_HOOK_RAW(sub_82324938) {
   __imp__sub_82324938(ctx, base);
   if (active) {
     SyncLogicalTick(base, timing, LoadBE32(base, timing + kLogicalTickOffset) - before);
+  }
+}
+
+// The title's frame timer (slot 0x2C of the timing object's vtable 0x82095D5C). Its minimum frame stays at the fixed
+// step's 30 or 33 ms, so with the fixed step off a 16.7 ms frame falls below it and is published as 0 ms, and the
+// next as about 30: at 60 FPS the inline sites alternate between 0 and 30 (0 ms on ~267 of every 600 frames, measured).
+// The camera turns that into its time step (sub_82287130: +0x1974 = ms * 0.04) and a camera mode change divides by it
+// (sub_8228BAB8: +0x1868 = 5 or 10 / step), so being ragdolled on a 0 ms frame gave an infinite zoom that its decay
+// (sub_8228A3D0) turned into NaN, which took the camera, the player and the sound listener with it (the 3D sound pass,
+// sub_82252150, then read outside its occlusion map: the crash at guest 0x72D32F98). With the fixed step off, the
+// published frame is the port's own frame time instead, never 0; at 30 the sites use the fixed 33 ms and this is left
+// alone.
+REX_HOOK_RAW(sub_823263D8) {
+  __imp__sub_823263D8(ctx, base);
+  if (HighFrameRate(FrameRate()) && *GuestByte(base, kMeasuredFrameValidAddress)) {
+    StoreBE32(base, kMeasuredFrameMsAddress, g_frame_ms.load(std::memory_order_relaxed));
   }
 }
 

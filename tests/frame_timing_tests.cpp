@@ -144,6 +144,38 @@ void TestPacerUnlimited() {
   CHECK(frame.release_ns == 4 * kSecond && frame.step.seconds == 1.0 / 144);
 }
 
+// The published frame milliseconds: whole, never 0 (the camera divides by its time step), and exact over time.
+void TestFrameMs() {
+  // 60 FPS: 16 or 17 ms a frame, 1000 ms a second.
+  double total = 0.0;
+  uint32_t sum = 0;
+  for (int i = 0; i < 60; ++i) {
+    total += FixedFrameStep(60).seconds * 1000.0;
+    const uint32_t ms = TakeFrameMs(total);
+    CHECK(ms == 16 || ms == 17);
+    sum += ms;
+  }
+  CHECK(sum == 1000 || sum == 999);
+  // Sub-millisecond frames (Unlimited) still publish at least 1 ms and pay it back afterwards.
+  total = 0.0;
+  sum = 0;
+  for (int i = 0; i < 4000; ++i) {
+    total += 0.25;
+    const uint32_t ms = TakeFrameMs(total);
+    CHECK(ms >= 1);
+    sum += ms;
+  }
+  CHECK(sum >= 1000 && sum <= 4000);
+  CHECK(std::fabs(double(sum) + total - 1000.0) < 1e-6);
+  // A 30 FPS step is 33 or 34.
+  total = 0.0;
+  for (int i = 0; i < 30; ++i) {
+    total += FixedFrameStep(30).seconds * 1000.0;
+    const uint32_t ms = TakeFrameMs(total);
+    CHECK(ms == 33 || ms == 34);
+  }
+}
+
 // The snap's velocity is drop * gain / dt; the hook makes it drop * gain * 30 for steps shorter than a 30 FPS frame.
 void TestGroundSnap() {
   constexpr float kDropTimesGain = 0.25f;
@@ -175,5 +207,6 @@ int main() {
   TestPacerLate();
   TestPacerUnlimited();
   TestGroundSnap();
+  TestFrameMs();
   return check::Finish("frame_timing_tests");
 }

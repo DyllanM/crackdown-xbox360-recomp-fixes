@@ -94,3 +94,10 @@ wave's safety timeout at 30 Hz at any frame rate, so speech is not stopped early
 `crackdown_ground_snap_velocity` at `0x822B5634` gives the character's step-down snap in `sub_822B4D40` (`out.y =
 -(clamp(drop) * gain) / dt`) its 30 FPS velocity above 30 FPS, so running down stairs and slopes no longer builds up
 speed (adapted from Unowa001/crackdown-recomp's `--sim_ground_snap_30hz`; `GroundSnapVelocity` in `src/frame_timing.h`).
+
+The title's frame timer (`sub_823263D8`, hooked in `src/frame_pacing.cpp`) keeps the fixed step's 30 ms minimum frame,
+so with the fixed step off it publishes 0 ms at `0x82D99128` on almost every other 60 FPS frame. The camera's time step
+(`sub_82287130`, `+0x1974`) follows it, and a camera mode change on such a frame (`sub_8228BAB8`, when the player is
+knocked down or ragdolled) divides by it. The infinite result turns into NaN in the camera, the player and the sound
+listener, and the 3D sound pass (`sub_82252150`) then read far outside its occlusion map: the explosion and ragdoll
+crash at guest `0x72D32F98`. With the fixed step off the hook publishes the port's own frame time instead, never 0.
