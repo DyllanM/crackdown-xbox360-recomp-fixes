@@ -1,0 +1,244 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 180" preserveAspectRatio="xMidYMid meet">
+  <style>
+    .deep { fill: #071425; }
+    .deep-line { fill: none; stroke: #071425; }
+    .blue { fill: #1E5C9E; }
+    .blue-line { fill: none; stroke: #1E5C9E; }
+    .accent { fill: #40A6F2; }
+    .accent-line { fill: none; stroke: #40A6F2; }
+    .cyan { fill: #7FE0FF; }
+    .cyan-line { fill: none; stroke: #7FE0FF; }
+    .highlight { fill: #C8F3FF; }
+    .deep-stop { stop-color: #071425; }
+    .blue-stop { stop-color: #1E5C9E; }
+    .accent-stop { stop-color: #40A6F2; }
+    .cyan-stop { stop-color: #7FE0FF; }
+  </style>
+
+  <defs>
+    <radialGradient id="glow" cx="1350" cy="118" r="370" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="cyan-stop" stop-opacity=".055"/>
+      <stop offset=".55" class="accent-stop" stop-opacity=".025"/>
+      <stop offset="1" class="accent-stop" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="haze" x1="940" y1="0" x2="1600" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="accent-stop" stop-opacity="0"/>
+      <stop offset=".55" class="accent-stop" stop-opacity=".05"/>
+      <stop offset="1" class="cyan-stop" stop-opacity=".09"/>
+    </linearGradient>
+    <linearGradient id="gridFade" x1="980" y1="0" x2="1580" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="accent-stop" stop-opacity="0"/>
+      <stop offset="1" class="accent-stop" stop-opacity=".075"/>
+    </linearGradient>
+    <linearGradient id="tower" x1="0" y1="50" x2="0" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="deep-stop" stop-opacity=".08"/>
+      <stop offset="1" class="deep-stop" stop-opacity=".52"/>
+    </linearGradient>
+    <linearGradient id="backTower" x1="0" y1="110" x2="0" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="blue-stop" stop-opacity=".03"/>
+      <stop offset="1" class="deep-stop" stop-opacity=".20"/>
+    </linearGradient>
+    <linearGradient id="deck" x1="0" y1="120" x2="0" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="deep-stop" stop-opacity=".20"/>
+      <stop offset="1" class="deep-stop" stop-opacity=".48"/>
+    </linearGradient>
+    <linearGradient id="streak" x1="620" y1="0" x2="900" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="accent-stop" stop-opacity="0"/>
+      <stop offset=".7" class="accent-stop" stop-opacity=".04"/>
+      <stop offset="1" class="accent-stop" stop-opacity=".30"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="860" y1="0" x2="1240" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" class="accent-stop" stop-opacity="0"/>
+      <stop offset="1" class="cyan-stop" stop-opacity=".26"/>
+    </linearGradient>
+  </defs>
+
+  <g id="ambient">
+    <rect x="0" y="0" width="1600" height="180" fill="url(#glow)"/>
+    <rect x="940" y="0" width="660" height="180" fill="url(#haze)"/>
+    <g stroke="url(#gridFade)" stroke-width="1">
+      <path d="M1012 0V180M1056 0V180M1100 0V180M1144 0V180M1188 0V180M1232 0V180M1276 0V180M1320 0V180M1364 0V180M1408 0V180M1452 0V180M1496 0V180M1540 0V180M1584 0V180"/>
+      <path d="M980 32H1600M980 64H1600M980 96H1600M980 128H1600M980 160H1600"/>
+    </g>
+  </g>
+
+  <g id="back-skyline" fill="url(#backTower)">
+    <rect x="962" y="128" width="32" height="52"/>
+    <rect x="1000" y="120" width="22" height="60"/>
+    <rect x="1028" y="134" width="40" height="46"/>
+    <rect x="1090" y="124" width="26" height="56"/>
+    <rect x="1122" y="136" width="44" height="44"/>
+    <rect x="1186" y="118" width="30" height="62"/>
+    <rect x="1222" y="130" width="24" height="50"/>
+    <rect x="1268" y="122" width="36" height="58"/>
+    <rect x="1320" y="132" width="30" height="48"/>
+    <rect x="1362" y="120" width="26" height="60"/>
+    <rect x="1400" y="128" width="40" height="52"/>
+    <rect x="1454" y="118" width="24" height="62"/>
+    <rect x="1490" y="132" width="34" height="48"/>
+    <rect x="1540" y="122" width="26" height="58"/>
+    <rect x="1570" y="134" width="30" height="46"/>
+  </g>
+
+  <g id="skyline" fill="url(#tower)">
+    <rect x="1008" y="110" width="34" height="70"/>
+    <rect x="1050" y="88" width="28" height="92"/>
+    <polygon points="1112,180 1112,66 1120,58 1140,58 1148,66 1148,180"/>
+    <rect x="1156" y="96" width="26" height="84"/>
+    <rect x="1188" y="48" width="42" height="132"/>
+    <rect x="1238" y="82" width="28" height="98"/>
+    <polygon points="1274,180 1274,60 1284,48 1310,48 1310,180"/>
+    <rect x="1350" y="72" width="42" height="108"/>
+    <rect x="1400" y="92" width="28" height="88"/>
+    <polygon points="1436,180 1436,42 1446,42 1446,36 1470,36 1470,42 1480,42 1480,180"/>
+    <rect x="1488" y="78" width="30" height="102"/>
+    <rect x="1524" y="100" width="24" height="80"/>
+    <rect x="1556" y="58" width="38" height="122"/>
+    <rect x="1588" y="86" width="12" height="94"/>
+  </g>
+
+  <g id="tower-edges" class="accent-line" stroke-opacity=".26" stroke-width="1">
+    <path d="M1008 110H1042"/>
+    <path d="M1050 88H1078"/>
+    <path d="M1112 66L1120 58H1140L1148 66"/>
+    <path d="M1156 96H1182"/>
+    <path d="M1188 48H1230"/>
+    <path d="M1238 82H1266"/>
+    <path d="M1274 60L1284 48H1310"/>
+    <path d="M1350 72H1392"/>
+    <path d="M1400 92H1428"/>
+    <path d="M1436 42H1446M1446 36H1470M1470 42H1480"/>
+    <path d="M1488 78H1518"/>
+    <path d="M1524 100H1548"/>
+    <path d="M1556 58H1594"/>
+    <path d="M1588 86H1600"/>
+  </g>
+
+  <g id="tower-lights" class="cyan" fill-opacity=".55">
+    <rect x="1016" y="122" width="1.6" height="2.4"/>
+    <rect x="1024" y="136" width="1.6" height="2.4"/>
+    <rect x="1058" y="102" width="1.4" height="2"/>
+    <rect x="1066" y="118" width="1.4" height="2"/>
+    <rect x="1122" y="78" width="1.6" height="2.4"/>
+    <rect x="1132" y="96" width="1.6" height="2.4"/>
+    <rect x="1164" y="110" width="1.4" height="2"/>
+    <rect x="1198" y="64" width="1.6" height="2.4"/>
+    <rect x="1210" y="86" width="1.6" height="2.4"/>
+    <rect x="1218" y="108" width="1.6" height="2.4"/>
+    <rect x="1248" y="98" width="1.4" height="2"/>
+    <rect x="1282" y="76" width="1.6" height="2.4"/>
+    <rect x="1294" y="98" width="1.6" height="2.4"/>
+    <rect x="1362" y="88" width="1.6" height="2.4"/>
+    <rect x="1378" y="110" width="1.6" height="2.4"/>
+    <rect x="1410" y="108" width="1.4" height="2"/>
+    <rect x="1444" y="58" width="1.6" height="2.4"/>
+    <rect x="1458" y="80" width="1.6" height="2.4"/>
+    <rect x="1466" y="102" width="1.6" height="2.4"/>
+    <rect x="1498" y="94" width="1.4" height="2"/>
+    <rect x="1566" y="74" width="1.6" height="2.4"/>
+    <rect x="1578" y="96" width="1.6" height="2.4"/>
+  </g>
+
+  <g id="antennas" class="accent-line" stroke-opacity=".42" stroke-width="1">
+    <path d="M1209 48V26"/>
+    <path d="M1297 48V34"/>
+    <path d="M1458 36V18"/>
+    <path d="M1575 58V40"/>
+  </g>
+  <g id="energy-lines" class="cyan-line" stroke-opacity=".10" stroke-width="1">
+    <path d="M1209 30V4M1297 38V14M1458 22V0M1575 44V24"/>
+  </g>
+  <g id="beacons" class="cyan" fill-opacity=".8">
+    <circle cx="1209" cy="25" r="1.4"/>
+    <circle cx="1297" cy="33" r="1.2"/>
+    <circle cx="1458" cy="17" r="1.4"/>
+    <circle cx="1575" cy="39" r="1.2"/>
+  </g>
+
+  <g id="viaduct">
+    <path d="M760 168C980 165 1150 150 1330 141C1450 135 1540 131 1600 129L1600 136C1540 138 1450 142 1330 148C1150 157 980 172 760 175Z" fill="url(#deck)"/>
+    <path d="M760 168C980 165 1150 150 1330 141C1450 135 1540 131 1600 129" class="accent-line" stroke-opacity=".38" stroke-width="1.3"/>
+    <path d="M760 175C980 172 1150 157 1330 148C1450 142 1540 138 1600 136" class="accent-line" stroke-opacity=".12" stroke-width="1"/>
+    <path d="M800 160C1000 157 1160 143 1330 134C1450 128 1540 124 1600 122" class="cyan-line" stroke-opacity=".10" stroke-width="1" stroke-dasharray="4 14"/>
+    <g class="deep" fill-opacity=".40">
+      <rect x="892" y="168" width="3" height="12"/>
+      <rect x="986" y="166" width="3" height="14"/>
+      <rect x="1082" y="161" width="3" height="19"/>
+      <rect x="1178" y="157" width="3" height="23"/>
+      <rect x="1274" y="152" width="3" height="28"/>
+      <rect x="1370" y="147" width="3" height="33"/>
+      <rect x="1466" y="142" width="3" height="38"/>
+      <rect x="1556" y="137" width="3" height="43"/>
+    </g>
+    <g class="accent" fill-opacity=".18">
+      <rect x="892" y="168" width="1" height="12"/>
+      <rect x="986" y="166" width="1" height="14"/>
+      <rect x="1082" y="161" width="1" height="19"/>
+      <rect x="1178" y="157" width="1" height="23"/>
+      <rect x="1274" y="152" width="1" height="28"/>
+      <rect x="1370" y="147" width="1" height="33"/>
+      <rect x="1466" y="142" width="1" height="38"/>
+      <rect x="1556" y="137" width="1" height="43"/>
+    </g>
+  </g>
+
+  <g id="hud">
+    <path d="M880 116H1240" fill="none" stroke="url(#beam)" stroke-width="1"/>
+    <path d="M900 128H1600" class="accent-line" stroke-opacity=".08" stroke-width="1" stroke-dasharray="2 9"/>
+    <path d="M1128 26H1220" class="accent-line" stroke-opacity=".22" stroke-width="1" stroke-dasharray="1 7"/>
+    <path d="M1220 26H1256" class="accent-line" stroke-opacity=".38" stroke-width="1"/>
+    <path d="M1256 26V34" class="accent-line" stroke-opacity=".22" stroke-width="1"/>
+    <path d="M1256 26L1290 8H1360" class="accent-line" stroke-opacity=".16" stroke-width="1"/>
+    <g class="accent" fill-opacity=".30">
+      <rect x="906" y="110" width="9" height="2"/>
+      <rect x="922" y="110" width="9" height="2" fill-opacity=".52"/>
+      <rect x="938" y="110" width="9" height="2" fill-opacity=".76"/>
+      <rect x="954" y="110" width="9" height="2" fill-opacity=".44"/>
+    </g>
+    <g class="cyan" fill-opacity=".34">
+      <rect x="1000" y="124" width="7" height="1.6"/>
+      <rect x="1013" y="124" width="7" height="1.6" fill-opacity=".62"/>
+      <rect x="1026" y="124" width="7" height="1.6" fill-opacity=".38"/>
+    </g>
+    <path d="M962 98H994V104" class="accent-line" stroke-opacity=".20" stroke-width="1"/>
+    <path d="M996 108L1001 113L996 118L991 113Z" class="accent-line" stroke-opacity=".50" stroke-width="1"/>
+    <path d="M1168 138H1204V130H1238" class="accent-line" stroke-opacity=".24" stroke-width="1"/>
+    <path d="M1154 156H1188V148H1216" class="cyan-line" stroke-opacity=".18" stroke-width="1"/>
+    <circle cx="1238" cy="130" r="1.6" class="accent" fill-opacity=".65"/>
+    <circle cx="1216" cy="148" r="1.3" class="cyan" fill-opacity=".55"/>
+  </g>
+
+  <g id="scanner">
+    <path d="M1540 4A86 86 0 0 1 1596 60" class="accent-line" stroke-opacity=".22" stroke-width="1"/>
+    <path d="M1512 20A52 52 0 0 1 1560 68" class="cyan-line" stroke-opacity=".30" stroke-width="1"/>
+    <circle cx="1552" cy="30" r="30" class="accent-line" stroke-opacity=".14" stroke-width="1" stroke-dasharray="2 8"/>
+    <polygon points="1552,20 1558,26 1552,32 1546,26" class="accent-line" stroke-opacity=".52" stroke-width="1"/>
+    <circle cx="1552" cy="26" r="1.2" class="highlight" fill-opacity=".8"/>
+    <g class="accent-line" stroke-opacity=".28" stroke-width="1">
+      <path d="M1592 86H1600M1592 92H1598"/>
+      <path d="M1492 4V10M1492 170V176"/>
+    </g>
+  </g>
+
+  <g id="streaks">
+    <path d="M620 142H898" fill="none" stroke="url(#streak)" stroke-width="1" stroke-linecap="round"/>
+    <path d="M700 150H876" fill="none" stroke="url(#streak)" stroke-width="1" stroke-linecap="round"/>
+    <path d="M848 142H892" class="accent-line" stroke-opacity=".38" stroke-width="2" stroke-linecap="round"/>
+    <path d="M862 150H888" class="cyan-line" stroke-opacity=".32" stroke-width="1.6" stroke-linecap="round"/>
+  </g>
+
+  <g id="particles">
+    <circle cx="886" cy="70" r="1" class="accent" fill-opacity=".30"/>
+    <circle cx="930" cy="146" r="1.1" class="cyan" fill-opacity=".34"/>
+    <circle cx="986" cy="84" r="1" class="accent" fill-opacity=".26"/>
+    <circle cx="1044" cy="42" r="1.2" class="cyan" fill-opacity=".38"/>
+    <circle cx="1096" cy="132" r="1" class="accent" fill-opacity=".32"/>
+    <circle cx="1162" cy="22" r="1.1" class="cyan" fill-opacity=".30"/>
+    <circle cx="1228" cy="126" r="1" class="accent" fill-opacity=".28"/>
+    <circle cx="1340" cy="26" r="1.2" class="highlight" fill-opacity=".42"/>
+    <circle cx="1394" cy="150" r="1" class="cyan" fill-opacity=".30"/>
+    <circle cx="1484" cy="24" r="1.1" class="accent" fill-opacity=".38"/>
+    <circle cx="1530" cy="116" r="1" class="cyan" fill-opacity=".28"/>
+    <circle cx="1582" cy="62" r="1.2" class="accent" fill-opacity=".34"/>
+  </g>
+</svg>

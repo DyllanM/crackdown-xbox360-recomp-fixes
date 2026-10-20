@@ -4,6 +4,8 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <span>
@@ -14,14 +16,16 @@
 #include <imgui.h>
 
 #include <rex/cvar.h>
+#include <rex/filesystem.h>
 #include <rex/logging.h>
 #include <rex/system/achievement_manager.h>
+#include <rex/ui/image_decode.h>
+#include <rex/ui/immediate_drawer.h>
 #include <rex/ui/imgui_dialog.h>
 #include <rex/ui/imgui_drawer.h>
 #include <rex/ui/overlay/achievement_icon_cache.h>
 #include <rex/version.h>
 
-#include "trg/headers.h"
 #include "trg/launcher.h"
 #include "trg/platform.h"
 
@@ -71,9 +75,43 @@ trg::Theme LauncherTheme() {
   return theme;
 }
 
-trg::HeaderPainter LauncherHeader() {
-  return trg::headers::Gradient(IM_COL32(14, 18, 30, 255), IM_COL32(12, 42, 68, 255), IM_COL32(8, 24, 40, 255),
-                                IM_COL32(8, 10, 18, 255));
+constexpr float kHeaderArtAspect = 1600.0f / 180.0f;
+
+trg::HeaderPainter LauncherHeader(ImTextureID art, float art_aspect) {
+  return [art, art_aspect](const trg::HeaderContext& c) {
+    c.draw->AddRectFilledMultiColor(c.min, c.max, IM_COL32(14, 18, 30, 255), IM_COL32(12, 42, 68, 255),
+                                    IM_COL32(8, 24, 40, 255), IM_COL32(8, 10, 18, 255));
+    if (art == ImTextureID{}) {
+      return;
+    }
+    const float height = c.max.y - c.min.y;
+    const float width = height * art_aspect;
+    const ImVec2 top_left(c.max.x - width, c.min.y);
+    c.draw->AddImage(ImTextureRef(art), top_left, c.max);
+  };
+}
+
+std::unique_ptr<rex::ui::ImmediateTexture> LoadHeaderArt(rex::ui::ImmediateDrawer* drawer) {
+  if (!drawer) {
+    return nullptr;
+  }
+  const std::filesystem::path path =
+      rex::filesystem::GetExecutableFolder() / "assets" / "launcher" / "header-art.png";
+  std::ifstream in(path, std::ios::binary);
+  if (!in) {
+    REXLOG_WARN("Launcher header art not found: {}", Utf8(path.filename()));
+    return nullptr;
+  }
+  const std::vector<uint8_t> encoded((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  int width = 0;
+  int height = 0;
+  const std::vector<uint8_t> pixels = rex::ui::DecodeImageRGBA(encoded.data(), encoded.size(), width, height);
+  if (pixels.empty() || width <= 0 || height <= 0) {
+    REXLOG_WARN("Launcher header art could not be decoded: {}", Utf8(path.filename()));
+    return nullptr;
+  }
+  return drawer->CreateTexture(uint32_t(width), uint32_t(height), rex::ui::ImmediateTextureFilter::kLinear, false,
+                               pixels.data());
 }
 
 trg::Fonts g_fonts;
@@ -159,6 +197,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     if (SelectedAspectRatio() != AspectRatio::k16x9) {
       SelectWindowSizeForAspect();
     }
+    header_art_ = LoadHeaderArt(game_.immediate_drawer);
     launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
     if (WindowFullscreen()) {
       restore_when_windowed_ = true;
@@ -398,7 +437,11 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
         {"PC PORT   \xC2\xB7   ", ""},
         {"BY SAULOB", kAuthorUrl},
     };
-    c.branding.background = LauncherHeader();
+    const float art_aspect =
+        header_art_ ? float(header_art_->width) / float(header_art_->height) : kHeaderArtAspect;
+    c.branding.background = LauncherHeader(header_art_ ? reinterpret_cast<ImTextureID>(header_art_.get())
+                                                       : ImTextureID{},
+                                           art_aspect);
     for (const LauncherPage page : kLauncherPageOrder) {
       c.pages.push_back(PageFor(page));
     }
@@ -887,6 +930,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   std::unique_ptr<rex::ui::AchievementIconCache> icons_;
   std::vector<MonitorInfo> monitors_;
   std::vector<GraphicsAdapter> graphics_adapters_;
+  std::unique_ptr<rex::ui::ImmediateTexture> header_art_;
   std::unique_ptr<trg::Launcher> launcher_;
   LauncherGamepad gamepad_;
   bool nav_taken_ = false;

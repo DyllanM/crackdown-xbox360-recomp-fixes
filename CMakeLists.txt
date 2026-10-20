@@ -300,6 +300,15 @@ add_custom_target(crackdown_rexglue_staging ALL
 )
 add_dependencies(crackdown_rexglue_staging crackdown)
 
+add_custom_command(TARGET crackdown POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:crackdown>/assets/launcher"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/launcher/header-art.png"
+        "$<TARGET_FILE_DIR:crackdown>/assets/launcher/header-art.png"
+    VERBATIM
+)
+
 # ThinLTO in Release and RelWithDebInfo; the runtime and GPU plugin are prebuilt. Debug compiles at -O0, which marks
 # every function optnone, so LTO would optimize nothing there.
 function(crackdown_enable_thinlto target)

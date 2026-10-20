@@ -33,6 +33,7 @@ $RequiredRootFiles = @('crackdown.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'c
 $OptionalRootFiles = @('LICENSE')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
 $GlyphFiles = @('button_glyphs.dds', 'button_glyphs.toml')
+$AssetFiles = @('assets\launcher\header-art.png')
 # Names that mean game data, saves, settings, caches or logs.
 $ForbiddenNames = @('default.xex', 'game', 'game-install-temp', 'game-install-backup', 'user_data', 'cache', 'logs',
     'settings.toml', '4D5307DC', '$SystemUpdate')
@@ -71,9 +72,15 @@ function Test-ReleaseFolder([string]$Dir) {
         $parts = $relative -split '\\'
         if ($parts.Count -eq 1) {
             if ($item.PSIsContainer) {
-                if (@('licenses', 'glyphs') -notcontains $item.Name) { $problems.Add("unexpected folder: $relative") }
+                if (@('licenses', 'glyphs', 'assets') -notcontains $item.Name) { $problems.Add("unexpected folder: $relative") }
             }
             elseif ($allowedRoot -notcontains $item.Name) { $problems.Add("unexpected file: $relative") }
+        } elseif ($parts[0] -eq 'assets') {
+            if ($item.PSIsContainer) {
+                if ($relative -ne 'assets\launcher') { $problems.Add("unexpected folder: $relative") }
+            } elseif ($AssetFiles -notcontains $relative) {
+                $problems.Add("unexpected item: $relative")
+            }
         } elseif ($parts.Count -gt 2 -or $item.PSIsContainer -or
                   -not (($parts[0] -eq 'licenses' -and $LicenseFiles -contains $item.Name) -or
                         ($parts[0] -eq 'glyphs' -and $GlyphFiles -contains $item.Name))) {
@@ -88,6 +95,9 @@ function Test-ReleaseFolder([string]$Dir) {
     }
     foreach ($leaf in $GlyphFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $base "glyphs\$leaf") -PathType Leaf)) { $problems.Add("missing: glyphs\$leaf") }
+    }
+    foreach ($asset in $AssetFiles) {
+        if (-not (Test-Path -LiteralPath (Join-Path $base $asset) -PathType Leaf)) { $problems.Add("missing: $asset") }
     }
     return $problems
 }
@@ -142,6 +152,11 @@ foreach ($leaf in @('crackdown.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'crac
 }
 foreach ($leaf in $GlyphFiles) {
     Copy-Item (Join-Path $ReleaseBuild "glyphs\$leaf") (Join-Path $Stage 'glyphs')
+}
+$AssetDir = Join-Path $Stage 'assets\launcher'
+New-Item -ItemType Directory -Force $AssetDir | Out-Null
+foreach ($asset in $AssetFiles) {
+    Copy-Item -LiteralPath (Join-Path $Root $asset) $AssetDir
 }
 foreach ($leaf in @('rexruntime.dll', 'rexgpu-xenos.dll')) {
     if ((Get-FileSha256 (Join-Path $Stage $leaf)) -ne (Get-FileSha256 (Join-Path $layout.SdkDir "bin\$leaf"))) {

@@ -124,7 +124,7 @@ echo "== Build ($PRESET)"
 BIN="$WORK/out/build/$PRESET"
 [ "$CLEAN" = 1 ] && rm -rf "$BIN"
 (cd "$WORK" && cmake --preset "$PRESET" >/dev/null && cmake --build --preset "$PRESET")
-for f in crackdown librexruntime.so librexgpu-xenos.so crackdown.toml; do
+for f in crackdown librexruntime.so librexgpu-xenos.so crackdown.toml assets/launcher/header-art.png; do
   [ -f "$BIN/$f" ] || fail "build output is missing $f"
 done
 bash "$PATCHED" --check "$SDK" --staged "$BIN" || fail "the build folder does not hold the patched ReXGlue libraries"
@@ -138,6 +138,8 @@ cp "$BIN/crackdown" "$BIN/librexruntime.so" "$BIN/librexgpu-xenos.so" "$BIN/crac
   "$APPDIR/usr/bin/"
 mkdir -p "$APPDIR/usr/bin/glyphs"
 cp "$BIN/glyphs/button_glyphs.dds" "$BIN/glyphs/button_glyphs.toml" "$APPDIR/usr/bin/glyphs/"
+mkdir -p "$APPDIR/usr/bin/assets/launcher"
+cp "$BIN/assets/launcher/header-art.png" "$APPDIR/usr/bin/assets/launcher/"
 # Debug sections carry the build machine's folders.
 strip --strip-unneeded "$APPDIR/usr/bin/crackdown"
 # ReXGlue needs GLIBCXX_3.4.32 (GCC 13); AppRun uses this copy only on systems without it.
@@ -170,7 +172,8 @@ cp "$ICONS/app-icon-256.png" "$APPDIR/crackdown.png"
 cp "$ICONS/app-icon-256.png" "$APPDIR/.DirIcon"
 chmod 755 "$APPDIR/AppRun" "$APPDIR/usr/bin/crackdown"
 chmod 644 "$APPDIR/"*.desktop "$APPDIR/"*.png "$APPDIR/.DirIcon" "$APPDIR/usr/bin/"*.so \
-  "$APPDIR/usr/bin/crackdown.toml" "$APPDIR/usr/bin/glyphs/"* "$APPDIR/usr/lib/"* "$DOC/"*
+  "$APPDIR/usr/bin/crackdown.toml" "$APPDIR/usr/bin/glyphs/"* "$APPDIR/usr/bin/assets/launcher/header-art.png" \
+  "$APPDIR/usr/lib/"* "$DOC/"*
 find "$THEME" -type f -exec chmod 644 {} +
 bash "$PATCHED" --check "$SDK" --staged "$APPDIR/usr/bin" || fail "the AppDir does not hold the patched ReXGlue libraries"
 
@@ -202,6 +205,7 @@ EXPECTED=".DirIcon
 AppRun
 crackdown.png
 $APP_ID.desktop
+usr/bin/assets/launcher/header-art.png
 usr/bin/crackdown
 usr/bin/crackdown.toml
 usr/bin/glyphs
