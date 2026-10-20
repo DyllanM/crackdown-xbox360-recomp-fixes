@@ -5,9 +5,9 @@ result is installed over the stock files in `tools/rexglue`. The game compiles a
 must not move virtual functions or data members of classes the generated game code uses.
 
 `NNNN-name.patch` applies on both platforms, `NNNN-name.windows.patch` only on Windows and `NNNN-name.linux.patch` only on
-Linux. Numbers are unique and patches apply in name order; gaps are fine. 45 patches are common, 16 are Windows only and
-13 are Linux only, so 61 apply on Windows and 58 on Linux. Patches 0005 and 0052 change the code generator and are the
-reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
+Linux. Numbers are unique and patches apply in name order; gaps are fine. 46 patches are common, 16 are Windows only and
+13 are Linux only, so 62 apply on Windows and 59 on Linux. Patches 0005, 0052 and 0092 change the code generator and are
+the reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
 
 | # | Platform | Purpose |
 |---|----------|---------|
@@ -75,8 +75,9 @@ reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the run
 | 0081 | windows | `d3d12_async_submission`: a "D3D12 Submission" thread replays, executes and signals the recorded submissions in order, and a swap waits for it to drain; `d3d12_async_submission_draws` (2000) also ends a submission between draws outside occlusion queries |
 | 0082 | windows | D3D12 half of 0080: draws without transfers or clears skip the transfer pass, and sampler parameters are recomputed only when the shader, a fetch constant or `anisotropic_override` changed |
 | 0083 | windows | `gpu_host_threads_avoid_cpu0`: the command processor and submission threads run on the process's CPUs except 0 and 1 when it has at least 8 in one processor group |
+| 0092 | all | codegen: `vmaddfp`/`vnmsubfp` (and the 128 forms) round once like the hardware, and `vmsum3fp128`/`vmsum4fp128` sum in double and round once (Xenia's order) instead of `dpps`; with two roundings a unit length could round above 1.0, and running down slopes and stairs built up speed. The helpers are emitted into the generated `crackdown_pch.h` like 0052's; with `CRACKDOWN_GUEST_FMA` (on by default, `-mfma`) they use FMA3, without it they emulate the single rounding exactly (round to odd) at about twenty times the cost |
 
-Patches 0054 to 0058 and 0078 to 0083 and the hooks in `src/audio_guest_sync.cpp` are adapted from Unowa001/crackdown-recomp
+Patches 0054 to 0058, 0078 to 0083 and 0092 and the hooks in `src/audio_guest_sync.cpp` are adapted from Unowa001/crackdown-recomp
 (BSD 3-Clause, notice in [THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).
 
 The AppImage runtime has its own pin and patch in `patches/appimage-runtime` (see [linux.md](linux.md)).

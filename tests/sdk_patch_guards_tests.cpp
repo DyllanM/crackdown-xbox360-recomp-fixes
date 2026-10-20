@@ -88,6 +88,32 @@ void TestInvalidFetchPatchOnlyReplacesTheWarning() {
   CHECK(HasLine(patch, "       return;"));
 }
 
+// Every vector multiply-add and dot product the codegen emits goes through the single-rounding helpers.
+void TestVectorMultiplyAddIsFused() {
+  const std::string patch = ReadPatch("0092-");
+  CHECK(!patch.empty());
+  CHECK(patch.find("src/codegen/builders/vector.cpp") != std::string::npos);
+  CHECK(patch.find("resources/templates/codegen/pch_h.inja") != std::string::npos);
+  for (const char* helper : {"rex::ppc::simde_mm_vmaddfp(", "rex::ppc::simde_mm_vnmsubfp(",
+                             "rex::ppc::simde_mm_vmsum3fp(", "rex::ppc::simde_mm_vmsum4fp("}) {
+    CHECK(patch.find(std::string("+      \"\\tsimde_mm_store_ps({}.f32, ") + helper) != std::string::npos);
+  }
+  for (const char* helper : {"+inline simde__m128 simde_mm_vmaddfp(", "+inline simde__m128 simde_mm_vnmsubfp(",
+                             "+inline simde__m128 simde_mm_vmsum3fp(", "+inline simde__m128 simde_mm_vmsum4fp("}) {
+    CHECK(patch.find(helper) != std::string::npos);
+  }
+  // The two-rounding forms are gone from the builders.
+  CHECK(HasLine(patch, "-      \"\\tsimde_mm_store_ps({}.f32, simde_mm_add_ps(simde_mm_mul_ps(simde_mm_load_ps({}.f32), \""));
+  CHECK(HasLine(patch, "-      \"simde_mm_xor_ps(simde_mm_sub_ps(simde_mm_mul_ps(simde_mm_load_ps({}.f32), \""));
+  CHECK(HasLine(patch, "-      \"\\tsimde_mm_store_ps({}.f32, simde_mm_dp_ps(simde_mm_load_ps({}.f32), \""));
+  const std::filesystem::path source =
+      std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../../out/rexglue-sdk-src/src/codegen/builders/vector.cpp";
+  if (!std::filesystem::exists(source)) return;
+  const std::string text = check::ReadText(source);
+  CHECK(text.find("simde_mm_dp_ps(") == std::string::npos);
+  CHECK(text.find("simde_mm_add_ps(simde_mm_mul_ps(simde_mm_load_ps({}.f32)") == std::string::npos);
+}
+
 }  // namespace
 
 int main() {
@@ -95,5 +121,6 @@ int main() {
   TestPatchedSourceHasNoUninitialisedCount();
   TestMassiveCountHookIsWired();
   TestInvalidFetchPatchOnlyReplacesTheWarning();
+  TestVectorMultiplyAddIsFused();
   return check::Finish("sdk_patch_guards_tests");
 }

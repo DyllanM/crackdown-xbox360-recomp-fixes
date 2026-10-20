@@ -39,8 +39,9 @@ lists the keys and sets the mouse sensitivity. Xbox controllers keep working.
 
 Needs
 -----
-Windows 10 or 11 (64-bit), a GPU with Direct3D 12 support and the Microsoft
-Visual C++ 2015-2022 Redistributable (x64). On laptops with two GPUs the
+Windows 10 or 11 (64-bit), a CPU with FMA3 (Intel Haswell, AMD Piledriver or
+newer), a GPU with Direct3D 12 support and the Microsoft Visual C++ 2015-2022
+Redistributable (x64). On laptops with two GPUs the
 high-performance one is preferred.
 
 Known issue

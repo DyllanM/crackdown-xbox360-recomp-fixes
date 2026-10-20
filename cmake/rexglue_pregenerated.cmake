@@ -23,6 +23,15 @@ list(APPEND REXGLUE_RECOMP_OPTIONS
 set_source_files_properties(${REXGLUE_ENTRYPOINT_GENERATED_SOURCES}
     PROPERTIES COMPILE_OPTIONS "${REXGLUE_RECOMP_OPTIONS}")
 
+# The guest's vector multiply-adds round once (patches/rexglue-sdk/0092). With FMA3 the generated helpers use it; without
+# it they emulate the single rounding exactly, about twenty times slower per operation. No contraction, so only the
+# guest's fused operations are fused.
+option(CRACKDOWN_GUEST_FMA "Compile the recompiled game code for CPUs with FMA3 (Intel Haswell, AMD Piledriver or newer)" ON)
+set(REXGLUE_RECOMP_TARGET_OPTIONS "")
+if(CRACKDOWN_GUEST_FMA AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+    list(APPEND REXGLUE_RECOMP_TARGET_OPTIONS -mfma -ffp-contract=off)
+endif()
+
 # clang rejects a PCH whose EH mode differs from the including TU, so the options go on the target too.
 function(rexglue_apply_recomp_settings target_name pch_header)
     target_precompile_headers(${target_name} PRIVATE "${pch_header}")
@@ -39,6 +48,7 @@ macro(rexglue_setup_target target_name)
         )
         target_link_libraries(${target_name}_recomp PRIVATE rex::runtime)
         rexglue_apply_target_settings(${target_name}_recomp)
+        target_compile_options(${target_name}_recomp PRIVATE ${REXGLUE_RECOMP_TARGET_OPTIONS})
         rexglue_apply_recomp_settings(${target_name}_recomp
             "${REXGLUE_ENTRYPOINT_INCLUDE_DIR}/crackdown_pch.h")
         target_link_libraries(${target_name} PRIVATE ${target_name}_recomp)

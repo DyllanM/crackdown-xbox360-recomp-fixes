@@ -59,6 +59,7 @@ Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, wit
 
 - **Windows**: Windows 10 or 11, 64-bit, a DirectX 12 graphics card and the latest Microsoft Visual C++ 2015-2022 Redistributable (x64), **or**
 - **Linux / Steam Deck**: 64-bit x86 Linux with glibc 2.31 or newer, a Vulkan driver and an X11 or Wayland desktop
+- **A CPU with FMA3** on either platform: Intel Haswell (2013) or newer, AMD Piledriver (2012) or newer, every Ryzen and the Steam Deck
 - **Your own Crackdown disc** for Xbox 360, this exact game version:
 
 | | |
@@ -194,7 +195,7 @@ In an existing clone, run `git submodule update --init --recursive`.
 1. Install Visual Studio with the C++ and LLVM/Clang components.
 2. Extract the files of your disc into `game\assets`, so that `game\assets\Default.xex` exists.
 3. `.\tools\codegen.ps1` downloads the pinned ReXGlue SDK 0.10.0, checks `Default.xex` and generates the C++ into `generated\`.
-4. `.\tools\build.ps1` builds `build\crackdown.exe`. It first checks that ReXGlue's runtime and Xenos GPU plugin in `tools\rexglue` were built from this project's patches (`patches\rexglue-sdk`) and rebuilds them from the v0.10.0 source when they were not (network access the first time). It does not regenerate the C++; when that is stale it says so.
+4. `.\tools\build.ps1` builds `build\crackdown.exe`. The recompiled game code uses FMA3 for the guest's fused multiply-adds; for an older CPU, set `CRACKDOWN_GUEST_FMA` off in the build folder's CMake cache (`cmake -B build -DCRACKDOWN_GUEST_FMA=OFF` after the first build), which keeps the exact results but runs the vector math more slowly. It first checks that ReXGlue's runtime and Xenos GPU plugin in `tools\rexglue` were built from this project's patches (`patches\rexglue-sdk`) and rebuilds them from the v0.10.0 source when they were not (network access the first time). It does not regenerate the C++; when that is stale it says so.
 5. `.\tools\package-release.ps1` makes the release ZIP in `dist\`. It builds the same way, refuses to package a runtime that does not match the patches, and publishes nothing.
 6. `.\tools\test.ps1` builds and runs the tests that need no game files.
 
