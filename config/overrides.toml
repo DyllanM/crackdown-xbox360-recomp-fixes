@@ -61,6 +61,21 @@ name = "crackdown_ledge_snap_down"
 registers = ["f0"]
 after_instruction = false
 
+# A ragdoll started again on an already-ragdolled character differences a stale pose pair over the 30 FPS step instead
+# of one short step (f1 = dt, r29 = character).
+[[midasm_hook]]
+address = 0x822BA2E8
+name = "crackdown_ragdoll_pose_dt"
+registers = ["f1", "r29"]
+after_instruction = false
+
+# The camera's above-water push divides the depth by its forward axis's y (f13); a level camera made it infinite.
+[[midasm_hook]]
+address = 0x8228FDDC
+name = "crackdown_camera_lift_divisor"
+registers = ["f13"]
+after_instruction = false
+
 # Sanitizes the mixed frame before XAudioSubmitRenderDriverFrame in sub_82A4BEF8; r4 is the frame address.
 [[midasm_hook]]
 address = 0x82A4BF40

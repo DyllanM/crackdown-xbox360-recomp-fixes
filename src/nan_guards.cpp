@@ -2,11 +2,13 @@
 // listener, built from the same head data, then carry it into the character state. These hooks keep finite values
 // flowing; with finite data they change nothing.
 
+#include <array>
 #include <atomic>
 #include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <string>
 
 #include <rex/hook.h>
 #include <rex/logging.h>
@@ -14,6 +16,7 @@
 #include <rex/system/kernel_state.h>
 
 #include "guest_memory.h"
+#include "nan_guard_rules.h"
 
 namespace {
 
@@ -30,12 +33,11 @@ uint8_t* GuestBase() {
 
 // The title leaves the w lane as garbage, even a NaN bit pattern on the character position; only x, y and z count.
 bool XyzFinite(uint8_t* base, uint32_t address) {
+  float xyz[3];
   for (uint32_t i = 0; i < 3; ++i) {
-    if (!std::isfinite(LoadFloat(base, address + 4 * i))) {
-      return false;
-    }
+    xyz[i] = LoadFloat(base, address + 4 * i);
   }
-  return true;
+  return crackdown::nan_guard::XyzFinite(xyz);
 }
 
 int64_t NowMs() {
@@ -62,6 +64,7 @@ struct RepairLog {
 RepairLog g_listener_log{"The audio listener"};
 RepairLog g_target_log{"The character's look-at target"};
 RepairLog g_aim_log{"The player's aim point"};
+RepairLog g_camera_log{"The camera"};
 
 // Only the audio thread builds the listener.
 float g_listener_matrix[4][3];
@@ -162,4 +165,37 @@ REX_HOOK_RAW(sub_824FD840) {
       StoreFloat(base, field + 4 * lane, std::isfinite(position) ? position : 0.0f);
     }
   }
+}
+
+REX_EXTERN(__imp__sub_82287130);
+
+// The camera's per-frame update (r3 = camera). Its target-derived points feed the audio listener and the aim ray; a
+// non-finite camera state is put back to the state before the update.
+REX_HOOK_RAW(sub_82287130) {
+  const uint32_t camera = ctx.r3.u32;
+  const bool plausible = crackdown::guest::Plausible(camera);
+  thread_local std::array<uint8_t, crackdown::nan_guard::kCameraBytes> saved;
+  if (plausible) {
+    std::memcpy(saved.data(), rex::memory::GuestPtr<const uint8_t*>(base, camera), saved.size());
+  }
+  __imp__sub_82287130(ctx, base);
+  if (!plausible) {
+    return;
+  }
+  std::string broken;
+  for (const crackdown::nan_guard::CameraField& field : crackdown::nan_guard::kCameraFields) {
+    if (XyzFinite(base, camera + field.offset)) {
+      continue;
+    }
+    broken += broken.empty() ? field.name : std::string(", ") + field.name;
+  }
+  if (broken.empty()) {
+    return;
+  }
+  g_camera_log.Note();
+  static std::atomic_flag logged_fields;
+  if (!logged_fields.test_and_set()) {
+    REXLOG_WARN("[NAN_GUARD] camera fields not finite after its update: {}", broken);
+  }
+  std::memcpy(rex::memory::GuestPtr<uint8_t*>(base, camera), saved.data(), saved.size());
 }

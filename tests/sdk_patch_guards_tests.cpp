@@ -125,6 +125,48 @@ void TestLedgeSnapDownHookIsWired() {
   CHECK(cmake.find("src/character_step_fixes.cpp") != std::string::npos);
 }
 
+void TestRagdollPoseDtHookIsWired() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string overrides = check::ReadText(root / "config/overrides.toml");
+  const size_t hook = overrides.find("address = 0x822BA2E8");
+  CHECK(hook != std::string::npos);
+  CHECK(overrides.find("name = \"crackdown_ragdoll_pose_dt\"", hook) != std::string::npos);
+  CHECK(overrides.find("registers = [\"f1\", \"r29\"]", hook) != std::string::npos);
+  CHECK(overrides.find("after_instruction = false", hook) != std::string::npos);
+  const std::string cmake = check::ReadText(root / "CMakeLists.txt");
+  CHECK(cmake.find("src/character_step_fixes.cpp") != std::string::npos);
+  const std::string source = check::ReadText(root / "src/character_step_fixes.cpp");
+  CHECK(source.find("void crackdown_ragdoll_pose_dt") != std::string::npos);
+}
+
+void TestCameraLiftDivisorHookIsWired() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string overrides = check::ReadText(root / "config/overrides.toml");
+  const size_t hook = overrides.find("address = 0x8228FDDC");
+  CHECK(hook != std::string::npos);
+  CHECK(overrides.find("name = \"crackdown_camera_lift_divisor\"", hook) != std::string::npos);
+  CHECK(overrides.find("registers = [\"f13\"]", hook) != std::string::npos);
+  CHECK(overrides.find("after_instruction = false", hook) != std::string::npos);
+  const std::string source = check::ReadText(root / "src/character_step_fixes.cpp");
+  CHECK(source.find("void crackdown_camera_lift_divisor") != std::string::npos);
+}
+
+void TestCameraRollbackHookIsWired() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string source = check::ReadText(root / "src/nan_guards.cpp");
+  CHECK(source.find("REX_EXTERN(__imp__sub_82287130);") != std::string::npos);
+  CHECK(source.find("REX_HOOK_RAW(sub_82287130)") != std::string::npos);
+  CHECK(source.find("crackdown::guest::Plausible(camera)") != std::string::npos);
+  CHECK(source.find("if (plausible)") != std::string::npos);
+  CHECK(source.find("if (!plausible)") != std::string::npos);
+  CHECK(source.find("crackdown::nan_guard::kCameraBytes") != std::string::npos);
+  const size_t call = source.find("__imp__sub_82287130(ctx, base);");
+  CHECK(call != std::string::npos);
+  CHECK(source.find("__imp__sub_82287130(ctx, base);", call + 1) == std::string::npos);
+  const std::string cmake = check::ReadText(root / "CMakeLists.txt");
+  CHECK(cmake.find("src/nan_guards.cpp") != std::string::npos);
+}
+
 void TestInvalidFetchPatchOnlyReplacesTheWarning() {
   const std::string patch = ReadPatch("0064-");
   CHECK(!patch.empty());
@@ -159,6 +201,9 @@ int main() {
   TestPatchedSourceHasNoUninitialisedCount();
   TestMassiveCountHookIsWired();
   TestLedgeSnapDownHookIsWired();
+  TestRagdollPoseDtHookIsWired();
+  TestCameraLiftDivisorHookIsWired();
+  TestCameraRollbackHookIsWired();
   TestXamLaunchTitleOwnsPath();
   TestCompareStringNUsesRealLengths();
   TestScissorEdgesCompareSigned();

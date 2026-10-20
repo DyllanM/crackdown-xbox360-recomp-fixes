@@ -1,0 +1,1 @@
+crackdown_add_test(nan_guard_rules_tests SOURCES nan_guard_rules_tests.cpp)
