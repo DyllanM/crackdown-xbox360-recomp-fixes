@@ -158,7 +158,8 @@ class CrackdownApp : public rex::ReXApp {
                             {defaults.game_data_root, defaults.user_data_root,
                              crackdown::PlayerSettingsPath(defaults.user_data_root), LogsDir(defaults.user_data_root),
                              user_data_.outcome},
-                            game_settings_, {}, MakeLauncherCallbacks([this, resume, defaults] { resume(defaults); }));
+                            game_settings_, {nullptr, immediate_drawer(), nullptr},
+                            MakeLauncherCallbacks([this, resume, defaults] { resume(defaults); }));
     return std::nullopt;
   }
 

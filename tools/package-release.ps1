@@ -29,7 +29,7 @@ $Packaging = Join-Path $Root 'packaging'
 . (Join-Path $PSScriptRoot 'rexruntime-patch.ps1')
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
-$RequiredRootFiles = @('crackdown.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'crackdown.toml', 'README.txt')
+$RequiredRootFiles = @('crackdown.exe', 'trg-updater.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'crackdown.toml', 'README.txt')
 $OptionalRootFiles = @('LICENSE')
 $LicenseFiles = @('ReXGlue-LICENSE.txt', 'THIRD-PARTY-LICENSES.txt')
 $GlyphFiles = @('button_glyphs.dds', 'button_glyphs.toml')
@@ -38,7 +38,7 @@ $AssetFiles = @('assets\launcher\header-art.png')
 $ForbiddenNames = @('default.xex', 'game', 'game-install-temp', 'game-install-backup', 'user_data', 'cache', 'logs',
     'settings.toml', '4D5307DC', '$SystemUpdate')
 $ForbiddenPatterns = @('*.xex', '*.iso', '*.dvd', '*.dff', '*.xwb', '*.xzp', '*.bik', '*.tpk', '*.spk', '*.log', '*.dmp',
-    '*.pdb', '*.xsh', '*.xpso', '*.bak', '*.tmp', '*.sav', '*.invalid', 'settings.toml.*')
+    '*.pdb', '*.xsh', '*.xpso', '*.bak', '*.tmp', '*.sav', '*.invalid', 'settings.toml.*', 'trg-update-*')
 # First bytes of an Xbox 360 package or executable.
 $ForbiddenMagic = @('LIVE', 'PIRS', 'CON ', 'XEX2')
 
@@ -63,6 +63,7 @@ function Test-ReleaseFolder([string]$Dir) {
             foreach ($path in $LocalPaths) {
                 if ($text.IndexOf($path, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $problems.Add("local path in file: $relative"); break }
             }
+            if ($text.IndexOf('DEBUG_SAULO', [StringComparison]::Ordinal) -ge 0) { $problems.Add("DEBUG_SAULO marker in file: $relative") }
             if ($item.Length -ge 4 -and ($ForbiddenMagic -contains $text.Substring(0, 4))) { $problems.Add("Xbox 360 package or executable: $relative") }
         }
         if ($ForbiddenNames -contains $item.Name) { $problems.Add("forbidden name: $relative") }
@@ -139,7 +140,7 @@ $layout = Get-RexglueLayout $Root 'Release'
 $runtimeProblems = @(Get-RexglueInstallProblems $layout)
 if ($runtimeProblems.Count) { Write-Problems $runtimeProblems; throw 'tools\rexglue does not hold the current patched Release runtime and GPU plugin (build without -SkipBuild to update them)' }
 
-foreach ($leaf in @('crackdown.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'crackdown.toml')) {
+foreach ($leaf in @('crackdown.exe', 'trg-updater.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'crackdown.toml')) {
     if (-not (Test-Path (Join-Path $ReleaseBuild $leaf))) { throw "Release build output is missing $leaf (run without -SkipBuild)" }
 }
 
@@ -147,7 +148,7 @@ New-Item -ItemType Directory -Force $Dist | Out-Null
 if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
 New-Item -ItemType Directory $Stage, (Join-Path $Stage 'licenses'), (Join-Path $Stage 'glyphs') | Out-Null
 
-foreach ($leaf in @('crackdown.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'crackdown.toml')) {
+foreach ($leaf in @('crackdown.exe', 'trg-updater.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'crackdown.toml')) {
     Copy-Item (Join-Path $ReleaseBuild $leaf) $Stage
 }
 foreach ($leaf in $GlyphFiles) {

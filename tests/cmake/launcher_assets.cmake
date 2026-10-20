@@ -1,0 +1,1 @@
+crackdown_add_test(launcher_assets_tests SOURCES launcher_assets_tests.cpp)

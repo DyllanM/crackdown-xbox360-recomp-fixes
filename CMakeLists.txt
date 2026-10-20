@@ -214,12 +214,25 @@ set(CRACKDOWN_SOURCES
     src/settings_file.cpp
     src/title_compat.cpp
     src/title_language.cpp
+    src/update_config.cpp
+    src/updater/github_release.cpp
+    src/updater/json.cpp
+    src/updater/sha256.cpp
+    src/updater/third_party/miniz/miniz.c
+    src/updater/update_controller.cpp
+    src/updater/update_job.cpp
+    src/updater/update_paths.cpp
+    src/updater/update_platform.cpp
+    src/updater/update_ui.cpp
+    src/updater/update_zip.cpp
+    src/updater/version.cpp
     src/user_data.cpp
     src/visibility_grid_guard.cpp
     src/window_host.cpp
     src/xdvdfs.cpp
     src/skip_intro.cpp
 )
+set_source_files_properties(src/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
 
 if(WIN32)
     # Resource 1 is the first icon in the executable: Explorer, and SDL's window class, use it. The icon is
@@ -331,6 +344,26 @@ endfunction()
 crackdown_enable_thinlto(crackdown)
 if(TARGET crackdown_recomp)
     crackdown_enable_thinlto(crackdown_recomp)
+endif()
+
+# The update helper runs from the temporary update workspace, away from the installation, so it keeps its runtime
+# inside the executable.
+if(WIN32)
+    add_executable(trg-updater WIN32
+        src/updater/helper_main.cpp
+        src/updater/install_transaction.cpp
+        src/updater/sha256.cpp
+        src/updater/update_job.cpp
+        src/updater/update_paths.cpp
+        src/updater/update_platform.cpp
+    )
+    target_include_directories(trg-updater PRIVATE src)
+    target_link_libraries(trg-updater PRIVATE shell32)
+    target_link_options(trg-updater PRIVATE -static)
+    set_property(TARGET trg-updater PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_options(trg-updater PRIVATE -Wall -Wextra)
+    set_target_properties(trg-updater PROPERTIES OUTPUT_NAME "trg-updater")
+    crackdown_enable_thinlto(trg-updater)
 endif()
 
 # The runtime reads its cvars from <exe dir>/crackdown.toml.

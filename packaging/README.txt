@@ -27,6 +27,14 @@ program uses a per-user folder and says so in the launcher. Delete
 user_data\settings.toml to reset your settings; a damaged settings file is
 set aside as settings.toml.invalid and replaced automatically.
 
+Updates
+-------
+The launcher checks the project's GitHub releases once per start. When a newer
+release exists, an update banner appears in the header; nothing is installed
+until you choose UPDATE NOW and then RESTART TO UPDATE. The update replaces only
+the port's own program files. Game files, DLC, user_data, saves, settings, logs
+and caches are kept.
+
 Keys
 ----
   F11    toggle fullscreen / windowed

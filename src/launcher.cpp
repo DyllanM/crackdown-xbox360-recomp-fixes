@@ -41,6 +41,7 @@
 #include "language_setting.h"
 #include "launcher_achievements.h"
 #include "launcher_achievements_page.h"
+#include "launcher_assets.h"
 #include "launcher_pages.h"
 #include "launcher_quit.h"
 #include "log_filter.h"
@@ -48,6 +49,8 @@
 #include "platform.h"
 #include "presentation_setting.h"
 #include "settings.h"
+#include "update_config.h"
+#include "updater/update_ui.h"
 
 namespace crackdown {
 namespace {
@@ -92,14 +95,14 @@ trg::HeaderPainter LauncherHeader(ImTextureID art, float art_aspect) {
 }
 
 std::unique_ptr<rex::ui::ImmediateTexture> LoadHeaderArt(rex::ui::ImmediateDrawer* drawer) {
+  const std::filesystem::path path = LauncherHeaderArtPath(rex::filesystem::GetExecutableFolder());
   if (!drawer) {
+    REXLOG_WARN("Launcher header art unavailable without an immediate drawer: {}", Utf8(path));
     return nullptr;
   }
-  const std::filesystem::path path =
-      rex::filesystem::GetExecutableFolder() / "assets" / "launcher" / "header-art.png";
   std::ifstream in(path, std::ios::binary);
   if (!in) {
-    REXLOG_WARN("Launcher header art not found: {}", Utf8(path.filename()));
+    REXLOG_WARN("Launcher header art not found: {}", Utf8(path));
     return nullptr;
   }
   const std::vector<uint8_t> encoded((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -107,7 +110,7 @@ std::unique_ptr<rex::ui::ImmediateTexture> LoadHeaderArt(rex::ui::ImmediateDrawe
   int height = 0;
   const std::vector<uint8_t> pixels = rex::ui::DecodeImageRGBA(encoded.data(), encoded.size(), width, height);
   if (pixels.empty() || width <= 0 || height <= 0) {
-    REXLOG_WARN("Launcher header art could not be decoded: {}", Utf8(path.filename()));
+    REXLOG_WARN("Launcher header art could not be decoded: {}", Utf8(path));
     return nullptr;
   }
   return drawer->CreateTexture(uint32_t(width), uint32_t(height), rex::ui::ImmediateTextureFilter::kLinear, false,
@@ -199,6 +202,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     }
     header_art_ = LoadHeaderArt(game_.immediate_drawer);
     launcher_ = std::make_unique<trg::Launcher>(MakeConfig());
+    updater_ = std::make_unique<trg::update::UpdateController>(MakeUpdateConfig(PortFolder()));
+    updater_->StartCheck();
     if (WindowFullscreen()) {
       restore_when_windowed_ = true;
       RequestFullscreen(false);
@@ -226,6 +231,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       return;
     }
     PollInstall();
+    PollUpdate();
     TrackPlacement();
     if (!nav_taken_) {
       saved_nav_flags_ = io.ConfigFlags & kNavFlags;
@@ -249,6 +255,10 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     ImGui::BeginDisabled(starting_);
     const trg::Result result = launcher_->Frame();
     ImGui::EndDisabled();
+    if (result == trg::Result::kNone && !starting_) {
+      HandleUpdateAction(
+          trg::update::DrawUpdateBanner(updater_->snapshot(), launcher_->config().theme, g_fonts));
+    }
     if (starting_) {
       DrawStartingMessage();
     }
@@ -306,6 +316,12 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   // Runs inside the last frame; the in-game overlays share this ImGui context.
   void OnClose() override {
+    if (updater_) {
+      updater_->Cancel();
+      if (updater_->Busy()) {
+        updater_.release();
+      }
+    }
     ImGuiIO& io = GetIO();
     gamepad_.Release(io);
     io.ConfigFlags = (io.ConfigFlags & ~kNavFlags) | saved_nav_flags_;
@@ -315,7 +331,16 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
  private:
   void Finish(std::function<void()> action) {
     done_ = true;
-    SavePlacement(placement_.Flush());
+    if (updater_) {
+      updater_->Cancel();
+      if (updater_->Busy()) {
+        // Do not join a network call on the UI thread when the launcher leaves.
+        updater_.release();
+      }
+    }
+    if (!skip_finish_save_) {
+      SavePlacement(placement_.Flush());
+    }
     Close();
     if (action) {
       action();
@@ -435,6 +460,7 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     c.branding.title = "CRACKDOWN";
     c.branding.subtitle_segments = {
         {"PC PORT   \xC2\xB7   ", ""},
+        {"v" CRACKDOWN_PORT_VERSION "   \xC2\xB7   ", ""},
         {"BY SAULOB", kAuthorUrl},
     };
     const float art_aspect =
@@ -591,6 +617,54 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
       REXLOG_INFO("Installing game files from {}", Utf8(source));
     } else {
       outcome_.reset();
+    }
+  }
+
+  void PollUpdate() {
+    if (updater_) {
+      updater_->Poll();
+    }
+  }
+
+  void HandleUpdateAction(trg::update::UpdateUiAction action) {
+    switch (action) {
+      case trg::update::UpdateUiAction::kDownload:
+        updater_->StartDownload();
+        break;
+      case trg::update::UpdateUiAction::kRetry:
+        if (updater_->RetryNeedsInstall()) {
+          if (install_.running() || starting_) {
+            launcher_->SetStatus("Wait for the current install to finish.", 5.0);
+            break;
+          }
+          if (!launcher_->Save()) {
+            break;
+          }
+          SavePlacement(placement_.Flush());
+          if (updater_->Retry()) {
+            skip_finish_save_ = true;
+            Finish(cb_.quit);
+          }
+        } else {
+          updater_->Retry();
+        }
+        break;
+      case trg::update::UpdateUiAction::kRestart:
+        if (install_.running() || starting_) {
+          launcher_->SetStatus("Wait for the current install to finish.", 5.0);
+          break;
+        }
+        if (!launcher_->Save()) {
+          break;
+        }
+        SavePlacement(placement_.Flush());
+        if (updater_->BeginInstall()) {
+          skip_finish_save_ = true;
+          Finish(cb_.quit);
+        }
+        break;
+      case trg::update::UpdateUiAction::kNone:
+        break;
     }
   }
 
@@ -951,6 +1025,8 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
   std::string install_failure_text_;
   std::shared_ptr<InstallOutcome> outcome_;
   trg::Task install_;
+  std::unique_ptr<trg::update::UpdateController> updater_;
+  bool skip_finish_save_ = false;
 };
 
 bool g_skipped_once = false;

@@ -16,15 +16,17 @@ $Cases = [ordered]@{
     'game file'        = 'game\Default.xex'
     'disc image'       = 'DVD.iso'
     'stray executable' = 'Default.xex'
+    'updater workspace' = 'trg-update-1234-5678\job.txt'
 }
 $failures = 0
 try {
     foreach ($case in $Cases.Keys) {
         $stage = Join-Path $StageRoot ($case -replace '\W', '_')
-        New-Item -ItemType Directory -Force (Join-Path $stage 'licenses'), (Join-Path $stage 'glyphs') | Out-Null
-        foreach ($leaf in 'crackdown.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'crackdown.toml', 'README.txt', 'LICENSE',
-            'licenses\ReXGlue-LICENSE.txt', 'licenses\THIRD-PARTY-LICENSES.txt', 'glyphs\button_glyphs.dds',
-            'glyphs\button_glyphs.toml') {
+        New-Item -ItemType Directory -Force (Join-Path $stage 'licenses'), (Join-Path $stage 'glyphs'),
+            (Join-Path $stage 'assets\launcher') | Out-Null
+        foreach ($leaf in 'crackdown.exe', 'trg-updater.exe', 'rexruntime.dll', 'rexgpu-xenos.dll', 'crackdown.toml',
+            'README.txt', 'LICENSE', 'licenses\ReXGlue-LICENSE.txt', 'licenses\THIRD-PARTY-LICENSES.txt',
+            'glyphs\button_glyphs.dds', 'glyphs\button_glyphs.toml', 'assets\launcher\header-art.png') {
             Set-Content -LiteralPath (Join-Path $stage $leaf) -Value 'placeholder'
         }
         $extra = $Cases[$case]
