@@ -81,20 +81,28 @@ void TestCursorHider() {
 void TestOverlay() {
   CursorHider hider;
   CHECK(hider.ControllerInput() == kHide);
-  CHECK(hider.SetOverlayOpen(true) == kShow);
+  CHECK(hider.SetOverlayOpen(true) == std::nullopt);
   CHECK(hider.overlay_open());
-  CHECK(hider.MouseMoved() == std::nullopt);
+  CHECK(hider.MouseMoved() == kShow);
   CHECK(hider.MouseButtonPressed() == std::nullopt);
   CHECK(hider.MouseWheelMoved() == std::nullopt);
-  CHECK(hider.KeyboardInput() == std::nullopt);
+  CHECK(hider.KeyboardInput() == kHide);
   CHECK(hider.ControllerInput() == std::nullopt);
   CHECK(hider.last_device() == CursorInputDevice::kController);
-  CHECK(hider.SetOverlayOpen(false) == kHide);
+  CHECK(hider.SetOverlayOpen(false) == std::nullopt);
 
   CHECK(hider.MouseMoved() == kShow);
   CHECK(hider.SetOverlayOpen(true) == std::nullopt);
   CHECK(hider.SetOverlayOpen(false) == std::nullopt);
   CHECK(hider.visible());
+}
+
+void TestMouseMotion() {
+  CHECK(!MouseMotionIsActivity(0.0f, 0.0f));
+  CHECK(MouseMotionIsActivity(1.0f, 0.0f));
+  CHECK(MouseMotionIsActivity(-1.0f, 0.0f));
+  CHECK(MouseMotionIsActivity(0.0f, 1.0f));
+  CHECK(MouseMotionIsActivity(0.0f, -1.0f));
 }
 
 void TestFocus() {
@@ -168,6 +176,20 @@ void TestControllerDrift() {
   }
 }
 
+void TestCaptureNoise() {
+  using namespace rex::input;
+  ControllerActivityFilter filter;
+  bool captured = true;
+  if (filter.Update(Pad(0, kThumbDeadzone - 1, 0, 0, 0))) {
+    captured = false;
+  }
+  CHECK(captured);
+  if (filter.Update(Pad(0, kThumbDeadzone, 0, 0, 0))) {
+    captured = false;
+  }
+  CHECK(!captured);
+}
+
 void TestControllerDevicesAreIndependent() {
   using namespace rex::input;
   ControllerActivityFilter first;
@@ -216,11 +238,14 @@ void TestCursorWiring() {
   CHECK(Has(host, "void OnMouseMove(rex::ui::MouseEvent& e) override"));
   CHECK(Has(host, "void OnMouseDown(rex::ui::MouseEvent& e) override"));
   CHECK(Has(host, "void OnMouseWheel(rex::ui::MouseEvent& e) override"));
+  CHECK(Has(host, "MouseMotionIsActivity(e.dx(), e.dy())"));
+  CHECK(Has(host, "cursor_.last_device()"));
   CHECK(Has(host, "void OnKeyDown(rex::ui::KeyEvent& e) override"));
   CHECK(Has(host, "void OnLostFocus(rex::ui::UISetupEvent&) override"));
   CHECK(Has(host, "void OnGotFocus(rex::ui::UISetupEvent&) override"));
   CHECK(Has(host, "SetInputActivityCallback(OnControllerActivity)"));
   CHECK(Has(host, "MouseLookOwnsCursor"));
+  CHECK(Has(host, "synthetic"));
   CHECK(Has(host, "mnk_mode"));
   CHECK(Has(host, "mnk_mouse"));
   CHECK(Has(host, "IsMouseLookActive"));
@@ -265,8 +290,9 @@ void TestInputActivityPatch() {
   CHECK(Has(patch, "SetInputActivityCallback"));
   CHECK(Has(patch, "NotifyInputActivity"));
   CHECK(Has(patch, "std::memcmp"));
-  CHECK(Has(patch, "g_input_activity_callback(id, gamepad)"));
-  CHECK(Has(patch, "NotifyInputActivity(id, state.gamepad)"));
+  CHECK(Has(patch, "bool synthetic"));
+  CHECK(Has(patch, "g_input_activity_callback(id, synthetic, gamepad)"));
+  CHECK(Has(patch, "NotifyInputActivity(id, info && info->synthetic, state.gamepad)"));
 }
 
 }  // namespace
@@ -274,11 +300,13 @@ void TestInputActivityPatch() {
 int main() {
   TestCursorHider();
   TestOverlay();
+  TestMouseMotion();
   TestFocus();
   TestControllerButtons();
   TestControllerSticks();
   TestControllerTriggers();
   TestControllerDrift();
+  TestCaptureNoise();
   TestControllerDevicesAreIndependent();
   TestMouseLookPolicy();
   TestWindowModes();

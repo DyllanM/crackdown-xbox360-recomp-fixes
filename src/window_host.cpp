@@ -20,6 +20,7 @@
 
 #include "cursor_hider.h"
 #include "input_activity.h"
+#include "mouse_look.h"
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -37,6 +38,19 @@ bool IsF11PhysicallyDown() {
 #else
   return false;
 #endif
+}
+
+bool IsMenuKey(rex::ui::VirtualKey key) {
+  switch (key) {
+    case rex::ui::VirtualKey::kEscape:
+    case rex::ui::VirtualKey::kReturn:
+    case rex::ui::VirtualKey::kX:
+    case rex::ui::VirtualKey::kZ:
+    case rex::ui::VirtualKey::kTab:
+      return true;
+    default:
+      return false;
+  }
 }
 
 bool IsGameplayKey(const rex::ui::KeyEvent& e) {
@@ -96,7 +110,8 @@ RECT RestoredWindowedRect(const rex::ui::Window* window, HWND hwnd, const std::o
 }
 #endif
 
-void OnControllerActivity(rex::input::DeviceId device, const rex::input::X_INPUT_GAMEPAD& gamepad);
+void OnControllerActivity(rex::input::DeviceId device, bool synthetic,
+                          const rex::input::X_INPUT_GAMEPAD& gamepad);
 
 class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::WindowListener {
  public:
@@ -142,6 +157,7 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
     if (!active_.load(std::memory_order_relaxed)) {
       return;
     }
+    crackdown::mouse_look::SetBlocked(open);
     cursor_.SetOverlayOpen(open);
     UpdateCursor();
   }
@@ -155,6 +171,9 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
   void OnKeyDown(rex::ui::KeyEvent& e) override {
     if (e.target() != window_) {
       return;
+    }
+    if (IsMenuKey(e.virtual_key())) {
+      crackdown::mouse_look::ReleaseCapture();
     }
     if (e.virtual_key() == rex::ui::VirtualKey::kF11) {
       e.set_handled(true);
@@ -181,7 +200,11 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
     ReleaseLatchIfPhysicallyUp();
   }
 
-  void OnMouseMove(rex::ui::MouseEvent& e) override { NoteMouse(e); }
+  void OnMouseMove(rex::ui::MouseEvent& e) override {
+    if (crackdown::MouseMotionIsActivity(e.dx(), e.dy())) {
+      NoteMouse(e);
+    }
+  }
   void OnMouseDown(rex::ui::MouseEvent& e) override { NoteMouse(e); }
   void OnMouseWheel(rex::ui::MouseEvent& e) override { NoteMouse(e); }
 
@@ -197,8 +220,9 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
     UpdateCursor();
   }
 
-  void HandleControllerActivity(rex::input::DeviceId device, const rex::input::X_INPUT_GAMEPAD& gamepad) {
-    if (!active_.load(std::memory_order_relaxed)) {
+  void HandleControllerActivity(rex::input::DeviceId device, bool synthetic,
+                                const rex::input::X_INPUT_GAMEPAD& gamepad) {
+    if (!active_.load(std::memory_order_relaxed) || synthetic) {
       return;
     }
     bool started = false;
@@ -209,6 +233,7 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
     if (!started) {
       return;
     }
+    crackdown::mouse_look::ReleaseCapture();
     rex::ui::WindowedAppContext* context = context_.load(std::memory_order_relaxed);
     if (!context) {
       return;
@@ -228,12 +253,16 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
       return;
     }
     const bool ui_wants_mouse = ui_wants_mouse_ && ui_wants_mouse_();
-    if (crackdown::MouseLookOwnsCursor(window_->HasFocus(), cursor_.overlay_open(), ui_wants_mouse,
+    crackdown::mouse_look::SetBlocked(cursor_.overlay_open() || ui_wants_mouse);
+    const bool mouse_look_owns =
+        crackdown::MouseLookOwnsCursor(window_->HasFocus(), cursor_.overlay_open(), ui_wants_mouse,
                                        rex::cvar::Query<bool>("mnk_mode"), rex::cvar::Query<bool>("mnk_mouse"),
-                                       rex::input::mnk::IsMouseLookActive())) {
-      return;
-    }
-    const bool visible = cursor_.visible() || ui_wants_mouse;
+                                       rex::input::mnk::IsMouseLookActive());
+    const bool visible =
+        !mouse_look_owns &&
+        (cursor_.last_device() == crackdown::CursorInputDevice::kMouse
+             ? (cursor_.visible() || ui_wants_mouse)
+             : cursor_.visible());
     const auto wanted =
         visible ? rex::ui::Window::CursorVisibility::kVisible : rex::ui::Window::CursorVisibility::kHidden;
     if (window_->GetCursorVisibility() != wanted) {
@@ -246,13 +275,12 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
     if (e.target() != window_ || !window_->HasFocus()) {
       return;
     }
-    if (!cursor_.overlay_open() && !(ui_wants_mouse_ && ui_wants_mouse_())) {
-      cursor_.MouseMoved();
-    }
+    cursor_.MouseMoved();
     UpdateCursor();
   }
 
   void ToggleFullscreen() {
+    crackdown::mouse_look::ReleaseCapture();
     const bool fullscreen = !window_->IsFullscreen();
 #if defined(_WIN32)
     if (fullscreen) {
@@ -325,8 +353,9 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
 
 WindowHost window_host;
 
-void OnControllerActivity(rex::input::DeviceId device, const rex::input::X_INPUT_GAMEPAD& gamepad) {
-  window_host.HandleControllerActivity(device, gamepad);
+void OnControllerActivity(rex::input::DeviceId device, bool synthetic,
+                          const rex::input::X_INPUT_GAMEPAD& gamepad) {
+  window_host.HandleControllerActivity(device, synthetic, gamepad);
 }
 
 class CursorSync final : public rex::ui::ImGuiDialog {

@@ -148,8 +148,8 @@ Optional gameplay modifiers, all off by default. They start with the values save
 
 ### Controls
 - Xbox controllers work without setup
-- **Keyboard and Mouse**: enabled or disabled (off by default). **W A S D** move, the mouse turns the camera and aims, the **left mouse button** fires and the **right mouse button** locks on. It works together with any connected Xbox controller.
-- **Mouse sensitivity**: 0.25x to 3.00x (default 1.00x).
+- **Keyboard and mouse**: enabled or disabled (off by default). **W A S D** move, the mouse turns the camera and aims, the **left mouse button** fires and the **right mouse button** locks on. It works together with any connected Xbox controller.
+- **Mouse sensitivity**: 0.10x to 10.00x (default 1.00x). The mouse turns the camera directly; it does not go through the right stick's deadzone or speed curve.
 - The complete key list is on the Controls page. Plain arrow keys also turn the camera, and menus use **W A S D** or **Shift + arrow** keys.
 
 ### Achievements

@@ -8,6 +8,8 @@
 
 #include "trg/settings.h"
 
+#include "mouse_look.h"
+
 namespace crackdown {
 
 // One keyboard control: the ReXGlue keybind_* setting, its launcher label and its Crackdown default.
@@ -289,6 +291,11 @@ inline void ResetKeyboardDefaults(trg::SettingsStore& settings) {
   for (const KeyboardAction& action : kKeyboardActions) {
     settings.Set(action.key, action.default_binding);
   }
+}
+
+inline void ResetKeyboardAndMouseDefaults(trg::SettingsStore& settings) {
+  ResetKeyboardDefaults(settings);
+  settings.Set("mnk_sensitivity", std::to_string(mouse_look::kDefaultSensitivity));
 }
 
 }  // namespace crackdown

@@ -21,6 +21,7 @@
 #include "internal_render_scale.h"
 #include "keybinds.h"
 #include "language_setting.h"
+#include "mouse_look.h"
 #include "multisampling.h"
 #include "platform.h"
 #include "presentation_setting.h"
@@ -134,7 +135,8 @@ std::string WindowValue(std::string_view key, const std::string& value) {
 
 std::string ClampedSensitivity(const std::string& value) {
   const double parsed = std::atof(value.c_str());
-  return std::to_string(std::clamp(parsed > 0.0 ? parsed : 1.0, 0.25, 3.0));
+  return std::to_string(
+      std::clamp(parsed > 0.0 ? parsed : 1.0, mouse_look::kMinSensitivity, mouse_look::kMaxSensitivity));
 }
 
 std::string TomlValue(std::string_view key, const std::string& value) {
@@ -384,6 +386,7 @@ void GameSettings::Apply() const {
   ApplyAspectRatio();
   ApplyInternalRenderPath();
   ApplyMultisampling();
+  mouse_look::Configure();
   SyncSavedCheats();
 }
 

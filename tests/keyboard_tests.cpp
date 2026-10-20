@@ -227,6 +227,25 @@ void TestPendingAndReset() {
   CHECK(store.Get("keybind_left_trigger") == "Q,I,RMB");
 }
 
+void TestKeyboardAndMouseReset() {
+  PendingStore store;
+  store.Set("keybind_a", "G");
+  store.Set("mnk_sensitivity", "2.89");
+  store.Set("mnk_mode", "false");
+  store.Set("crackdown_show_fps", "false");
+  store.Set("resolution_scale", "2");
+
+  ResetKeyboardAndMouseDefaults(store);
+
+  for (const KeyboardAction& action : kKeyboardActions) {
+    CHECK(store.Get(action.key) == action.default_binding);
+  }
+  CHECK(store.Get("mnk_sensitivity") == std::to_string(mouse_look::kDefaultSensitivity));
+  CHECK(store.Get("mnk_mode") == "false");
+  CHECK(store.Get("crackdown_show_fps") == "false");
+  CHECK(store.Get("resolution_scale") == "2");
+}
+
 void TestSerialization() {
   const auto safe = [](std::string_view value) {
     return value.find('"') == std::string_view::npos && value.find('\\') == std::string_view::npos &&
@@ -250,12 +269,14 @@ void TestSources() {
 
   const std::string launcher = ReadSource("launcher.cpp");
   CHECK(Has(launcher, "ui.KeyBindRow(action.label, nullptr, shown)"));
-  CHECK(Has(launcher, "ResetKeyboardDefaults(ui.settings())"));
+  CHECK(Has(launcher, "ResetKeyboardAndMouseDefaults(ui.settings())"));
   CHECK(Has(launcher, "KeyboardBindingFor(*key, io.KeyShift, io.KeyCtrl, io.KeyAlt)"));
   CHECK(Has(launcher, "KeyboardBindingLabel(SavedKeyboardBinding(ui.settings(), action))"));
   CHECK(Has(launcher, "Click a key, then press the new one. Esc cancels."));
-  CHECK(Has(launcher, "\"Keyboard defaults\""));
-  CHECK(Has(launcher, "ui.Toggle(\"Keyboard\","));
+  CHECK(Has(launcher, "\"Keyboard and mouse defaults\""));
+  CHECK(Has(launcher, "Restores the default keyboard controls and mouse sensitivity."));
+  CHECK(Has(launcher, "ui.Toggle(\"Keyboard and mouse\","));
+  CHECK(Has(launcher, "Use keyboard and mouse for gameplay controls together with the controller."));
   CHECK(Has(launcher, "\"mnk_mode\", false,"));
   CHECK(Has(launcher, "\"Off\", \"On\""));
   CHECK(Has(launcher, "ui.settings().GetBool(\"mnk_mode\", false)"));
@@ -320,6 +341,7 @@ int main() {
   TestLabel();
   TestSaved();
   TestPendingAndReset();
+  TestKeyboardAndMouseReset();
   TestSerialization();
   TestSources();
   TestKeyboardToggle();

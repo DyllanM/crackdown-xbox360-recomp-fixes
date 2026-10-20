@@ -167,6 +167,32 @@ void TestCameraRollbackHookIsWired() {
   CHECK(cmake.find("src/nan_guards.cpp") != std::string::npos);
 }
 
+void TestMouseLookHooksAreWired() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string overrides = check::ReadText(root / "config/overrides.toml");
+  const size_t a = overrides.find("address = 0x824FC15C");
+  CHECK(a != std::string::npos);
+  CHECK(overrides.find("name = \"crackdown_mouse_look_camera_a\"", a) != std::string::npos);
+  CHECK(overrides.find("registers = [\"f25\", \"f31\"]", a) != std::string::npos);
+  const size_t b = overrides.find("address = 0x824FABF0");
+  CHECK(b != std::string::npos);
+  CHECK(overrides.find("name = \"crackdown_mouse_look_camera_b\"", b) != std::string::npos);
+  CHECK(overrides.find("registers = [\"f28\", \"f31\"]", b) != std::string::npos);
+  const std::string cmake = check::ReadText(root / "CMakeLists.txt");
+  CHECK(cmake.find("src/mouse_look.cpp") != std::string::npos);
+}
+
+void TestMouseLookPatchSuppressesStick() {
+  const std::string patch = ReadPatch("0055-");
+  CHECK(!patch.empty());
+  CHECK(patch.find("REXCVAR_DEFINE_BOOL(mnk_mouse_stick") != std::string::npos);
+  CHECK(patch.find("REXCVAR_GET(mnk_mouse_stick)") != std::string::npos);
+  const std::string source = check::ReadText(
+      std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../../out/rexglue-sdk-src/src/input/mnk/mnk_input_driver.cpp");
+  if (source.empty()) return;
+  CHECK(source.find("mnk_mouse_stick") != std::string::npos);
+}
+
 void TestInvalidFetchPatchOnlyReplacesTheWarning() {
   const std::string patch = ReadPatch("0064-");
   CHECK(!patch.empty());
@@ -211,6 +237,8 @@ int main() {
   TestUnusedResolveCountersRemoved();
   TestMakePacketType0SetsOneRegister();
   TestUnusedLocalsKeepGuestReads();
+  TestMouseLookHooksAreWired();
+  TestMouseLookPatchSuppressesStick();
   TestInvalidFetchPatchOnlyReplacesTheWarning();
   return check::Finish("sdk_patch_guards_tests");
 }

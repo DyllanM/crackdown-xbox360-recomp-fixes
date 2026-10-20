@@ -189,6 +189,7 @@ set(CRACKDOWN_SOURCES
     src/cheats.cpp
     src/crash_report.cpp
     src/crt_native.cpp
+    src/entity_registry.cpp
     src/font_atlas.cpp
     src/font_rerender.cpp
     src/frame_counter.cpp
@@ -205,6 +206,7 @@ set(CRACKDOWN_SOURCES
     src/log_filter.cpp
     src/log_path.cpp
     src/massive_server_guard.cpp
+    src/mouse_look.cpp
     src/nan_guards.cpp
     src/platform.cpp
     src/session_log.cpp

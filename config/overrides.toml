@@ -76,6 +76,20 @@ name = "crackdown_camera_lift_divisor"
 registers = ["f13"]
 after_instruction = false
 
+# Player camera tail: f25 is the new yaw, f31 the clamped pitch.
+[[midasm_hook]]
+address = 0x824FC15C
+name = "crackdown_mouse_look_camera_a"
+registers = ["f25", "f31"]
+after_instruction = false
+
+# The alternate player camera path: f28 is the new yaw, f31 the clamped pitch.
+[[midasm_hook]]
+address = 0x824FABF0
+name = "crackdown_mouse_look_camera_b"
+registers = ["f28", "f31"]
+after_instruction = false
+
 # Sanitizes the mixed frame before XAudioSubmitRenderDriverFrame in sub_82A4BEF8; r4 is the frame address.
 [[midasm_hook]]
 address = 0x82A4BF40

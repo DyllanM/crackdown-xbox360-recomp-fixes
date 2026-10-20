@@ -40,6 +40,7 @@
 #include "launcher_pages.h"
 #include "launcher_quit.h"
 #include "log_filter.h"
+#include "mouse_look.h"
 #include "platform.h"
 #include "presentation_setting.h"
 #include "settings.h"
@@ -787,16 +788,18 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
 
   static void PageControls(trg::Ui& ui) {
     ui.Info("Controller", "Automatic: Xbox controllers work without setup.");
-    ui.Toggle("Keyboard", "Use the keyboard for gameplay controls together with the controller.", "mnk_mode", false,
-              "Off", "On");
+    ui.Toggle("Keyboard and mouse", "Use keyboard and mouse for gameplay controls together with the controller.",
+              "mnk_mode", false, "Off", "On");
     ImGui::BeginDisabled(!ui.settings().GetBool("mnk_mode", false));
-    ui.SliderFloat("Mouse sensitivity", "How fast the mouse turns the camera.", "mnk_sensitivity", 1.0f, 0.25f, 3.0f,
-                   "%.2fx");
+    ui.SliderFloat("Mouse sensitivity", "How fast the mouse turns the camera.", "mnk_sensitivity",
+                   float(mouse_look::kDefaultSensitivity), float(mouse_look::kMinSensitivity),
+                   float(mouse_look::kMaxSensitivity), "%.2fx");
     ImGui::EndDisabled();
-    if (ui.ConfirmRow("Keyboard defaults", "Puts the keyboard controls back to their standard layout.",
-                      "Reset to defaults", "Put every key back to its default?", "Reset")) {
-      ResetKeyboardDefaults(ui.settings());
-      ui.SetStatus("Keyboard controls reset to defaults.");
+    if (ui.ConfirmRow("Keyboard and mouse defaults",
+                      "Restores the default keyboard controls and mouse sensitivity.", "Reset to defaults",
+                      "Put the keyboard controls and mouse sensitivity back to their defaults?", "Reset")) {
+      ResetKeyboardAndMouseDefaults(ui.settings());
+      ui.SetStatus("Keyboard and mouse controls reset to defaults.");
     }
     if (ui.Section("Keyboard controls", true)) {
       ui.Help("Click a key, then press the new one. Esc cancels.");

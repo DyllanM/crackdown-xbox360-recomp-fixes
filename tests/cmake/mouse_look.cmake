@@ -1,0 +1,1 @@
+crackdown_add_test(mouse_look_tests SOURCES mouse_look_tests.cpp)

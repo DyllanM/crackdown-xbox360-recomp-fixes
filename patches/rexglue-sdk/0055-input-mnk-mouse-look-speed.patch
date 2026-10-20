@@ -21,7 +21,7 @@ diff --git a/src/input/mnk/mnk_input_driver.cpp b/src/input/mnk/mnk_input_driver
 index fa305c1..37d252c 100644
 --- a/src/input/mnk/mnk_input_driver.cpp
 +++ b/src/input/mnk/mnk_input_driver.cpp
-@@ -32,6 +32,14 @@ REXCVAR_DEFINE_BOOL(mnk_mouse, false, "Input",
+@@ -32,6 +32,18 @@ REXCVAR_DEFINE_BOOL(mnk_mouse, false, "Input",
                      "from the keybind_rstick_* keys only");
  REXCVAR_DEFINE_DOUBLE(mnk_sensitivity, 1.0, "Input", "Mouse sensitivity for right stick")
      .range(0.01, 10.0);
@@ -33,6 +33,10 @@ index fa305c1..37d252c 100644
 +                      "Right stick units per pixel per second of mouse movement, before "
 +                      "mnk_sensitivity (16: about 1500 px/s is full deflection)")
 +    .range(0.1, 1000.0);
++REXCVAR_DEFINE_BOOL(mnk_mouse_stick, true, "Input",
++                    "Turn mouse movement into right stick deflection; off leaves the mouse "
++                    "movement to the title's own mouse look")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
  
  REXCVAR_DEFINE_STRING(keybind_a, "Semicolon,Space", "Input/Keybinds/Controller", "A button");
  REXCVAR_DEFINE_STRING(keybind_b, "Quote,Backspace", "Input/Keybinds/Controller", "B button");
@@ -49,7 +53,7 @@ index fa305c1..37d252c 100644
      if (out_state) {
        std::memset(out_state, 0, sizeof(*out_state));
        out_state->packet_number = packet_number_;
-@@ -339,11 +353,41 @@ X_RESULT MnkInputDriver::GetDeviceState(DeviceId id, X_INPUT_STATE* out_state) {
+@@ -339,11 +357,41 @@ X_RESULT MnkInputDriver::GetDeviceState(DeviceId id, X_INPUT_STATE* out_state) {
    if (IsBindPressed(key_down_, REXCVAR_GET(keybind_rstick_down)))
      ry -= INT16_MAX;
  
@@ -61,7 +65,8 @@ index fa305c1..37d252c 100644
 +                                                double(rex::chrono::Clock::QueryHostTickFrequency())
 +                                          : 0.0;
 +  mouse_poll_tick_ = tick;
-   if (REXCVAR_GET(mnk_mouse) && IsMouseLookActive()) {
+-  if (REXCVAR_GET(mnk_mouse) && IsMouseLookActive()) {
++  if (REXCVAR_GET(mnk_mouse) && REXCVAR_GET(mnk_mouse_stick) && IsMouseLookActive()) {
 -    double sensitivity = REXCVAR_GET(mnk_sensitivity);
 -    constexpr double kBaseScale = 200.0;
 -    rx += static_cast<int32_t>(double(mouse_dx_) * sensitivity * kBaseScale);

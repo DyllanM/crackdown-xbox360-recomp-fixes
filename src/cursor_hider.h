@@ -10,8 +10,7 @@ namespace crackdown {
 
 enum class CursorInputDevice { kMouse, kKeyboard, kController };
 
-// The last meaningful gameplay input device decides the cursor. Overlays and a lost focus force it visible
-// until they go away.
+// The last meaningful input device decides the cursor; losing focus shows it.
 class CursorHider {
  public:
   bool visible() const { return visible_; }
@@ -36,14 +35,14 @@ class CursorHider {
 
  private:
   std::optional<bool> Note(CursorInputDevice device) {
-    if (focused_ && !overlay_open_) {
+    if (focused_) {
       last_device_ = device;
     }
     return Recalculate();
   }
 
   std::optional<bool> Recalculate() {
-    const bool visible = overlay_open_ || !focused_ || last_device_ == CursorInputDevice::kMouse;
+    const bool visible = !focused_ || last_device_ == CursorInputDevice::kMouse;
     if (visible == visible_) {
       return std::nullopt;
     }
@@ -62,6 +61,8 @@ inline bool MouseLookOwnsCursor(bool focused, bool overlay_open, bool ui_wants_m
                                 bool mnk_mouse, bool mouse_look_active) {
   return focused && !overlay_open && !ui_wants_mouse && mnk_mode && mnk_mouse && mouse_look_active;
 }
+
+inline bool MouseMotionIsActivity(float dx, float dy) { return dx != 0.0f || dy != 0.0f; }
 
 // Reports only the start of meaningful controller input, not a held button, stick, or trigger, so mouse
 // movement is not overridden by input already down.

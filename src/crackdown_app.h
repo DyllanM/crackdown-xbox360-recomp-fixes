@@ -37,6 +37,7 @@
 #include "launcher.h"
 #include "log_filter.h"
 #include "log_path.h"
+#include "mouse_look.h"
 #include "platform.h"
 #include "session_log.h"
 #include "settings.h"
@@ -232,7 +233,9 @@ class CrackdownApp : public rex::ReXApp {
       SetCursorOverlayOpen(launcher_open_);
       crackdown::AttachFrameRate(window(), app_context());
       crackdown::CheckWindowDisplay(window()->GetNativeWindowHandle(), REXCVAR_GET(monitor));
+      crackdown::mouse_look::Install(window());
     }
+    crackdown::mouse_look::Configure();
     if (imgui_drawer()) {
       crackdown::CreateFrameCounter(imgui_drawer());
       CreateCursorSync(imgui_drawer());
@@ -253,6 +256,7 @@ class CrackdownApp : public rex::ReXApp {
     CloseAchievements();
     cheat_menu_key_.reset();
     CloseCheatMenu();
+    crackdown::mouse_look::Uninstall();
     DetachWindowHost();
     // ReXApp destroys the window before the runtime; the input drivers must detach while it still exists.
     if (auto* input = runtime() ? runtime()->input_system() : nullptr) {

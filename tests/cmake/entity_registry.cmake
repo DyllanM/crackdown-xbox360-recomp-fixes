@@ -1,0 +1,1 @@
+crackdown_add_test(entity_registry_tests SOURCES entity_registry_tests.cpp)
