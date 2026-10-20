@@ -37,6 +37,7 @@
 #include "launcher.h"
 #include "log_filter.h"
 #include "log_path.h"
+#include "main_menu_quit.h"
 #include "mouse_look.h"
 #include "platform.h"
 #include "session_log.h"
@@ -244,6 +245,8 @@ class CrackdownApp : public rex::ReXApp {
     game_settings_.MarkRuntimeBuilt();
     crackdown::SetAchievementsCloseRequest(
         [this] { app_context().CallInUIThreadDeferred([this] { CloseAchievements(); }); });
+    crackdown::main_menu_quit::SetQuitHandler([this] { RequestHardExitFromUIThread(); });
+    crackdown::main_menu_quit::Install();
     InstallSkipIntro();
     if (window()) {
       cheat_menu_key_ = std::make_unique<crackdown::CheatMenuKey>(
@@ -267,10 +270,19 @@ class CrackdownApp : public rex::ReXApp {
     crackdown::FinalizeSessionLog();
   }
 
-  // A window close must not wait for guest threads: the OS reclaims the process. Finalizing here is the
+  // The hard-exit path must not wait for guest threads: the OS reclaims the process. Finalizing here is the
   // only chance to apply the logging policy before the hard exit.
   void OnClosing(rex::ui::UIEvent& e) override {
     (void)e;
+    HardExitFromUIThread();
+  }
+
+ private:
+  void RequestHardExitFromUIThread() {
+    app_context().CallInUIThreadDeferred([this] { HardExitFromUIThread(); });
+  }
+
+  void HardExitFromUIThread() {
     DetachWindowHost();
     REXLOG_INFO("Window closing, hard-exiting process.");
     crackdown::FinalizeSessionLog();
@@ -278,7 +290,6 @@ class CrackdownApp : public rex::ReXApp {
     std::_Exit(0);
   }
 
- private:
   crackdown::LauncherCallbacks MakeLauncherCallbacks(std::function<void()> start) {
     crackdown::LauncherCallbacks callbacks;
     callbacks.play = [this, start] {

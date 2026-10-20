@@ -167,6 +167,62 @@ void TestCameraRollbackHookIsWired() {
   CHECK(cmake.find("src/nan_guards.cpp") != std::string::npos);
 }
 
+void TestMainMenuQuitHookIsWired() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string overrides = check::ReadText(root / "config/overrides.toml");
+  const size_t handler = overrides.find("address = 0x8267839C");
+  CHECK(handler != std::string::npos);
+  CHECK(overrides.find("name = \"crackdown_main_menu_quit_use_handler\"", handler) != std::string::npos);
+  CHECK(overrides.find("jump_address = 0x826783A0", handler) != std::string::npos);
+  const size_t attached = overrides.find("address = 0x826783B4");
+  CHECK(attached != std::string::npos);
+  CHECK(overrides.find("name = \"crackdown_main_menu_quit_handler_attached\"", attached) != std::string::npos);
+  CHECK(overrides.find("jump_address = 0x826783B8", attached) != std::string::npos);
+  const size_t hook = overrides.find("address = 0x826783B8");
+  CHECK(hook != std::string::npos);
+  CHECK(overrides.find("name = \"crackdown_main_menu_quit_enable\"", hook) != std::string::npos);
+  CHECK(overrides.find("registers = [\"r4\", \"r11\", \"r31\"]", hook) != std::string::npos);
+  CHECK(overrides.find("after_instruction = true", hook) != std::string::npos);
+  const size_t complete = overrides.find("address = 0x826783C0");
+  CHECK(complete != std::string::npos);
+  CHECK(overrides.find("name = \"crackdown_main_menu_quit_setup_complete\"", complete) != std::string::npos);
+  const size_t popup = overrides.find("address = 0x82678778");
+  CHECK(popup != std::string::npos);
+  CHECK(overrides.find("name = \"crackdown_main_menu_quit_popup_state\"", popup) != std::string::npos);
+  CHECK(overrides.find("registers = [\"r11\"]", popup) != std::string::npos);
+  const std::string source = check::ReadText(root / "src/main_menu_quit.cpp");
+  CHECK(source.find("void crackdown_main_menu_quit_use_handler()") != std::string::npos);
+  CHECK(source.find("void crackdown_main_menu_quit_handler_attached()") != std::string::npos);
+  CHECK(source.find("void crackdown_main_menu_quit_enable(PPCRegister& enabled, PPCRegister& control, "
+                    "PPCRegister& self)") != std::string::npos);
+  CHECK(source.find("REX_HOOK_RAW(sub_82678768)") != std::string::npos);
+  CHECK(source.find("REX_HOOK_RAW(sub_826587F8)") != std::string::npos);
+  CHECK(source.find("REX_HOOK_RAW(sub_826586B0)") != std::string::npos);
+  CHECK(source.find("REX_HOOK_RAW(sub_82658560)") != std::string::npos);
+  CHECK(source.find("REX_HOOK_RAW(sub_82381F28)") != std::string::npos);
+  CHECK(source.find("__imp__sub_82690F68") == std::string::npos);
+  CHECK(source.find("__imp__sub_8265D630") == std::string::npos);
+  CHECK(source.find("__imp__sub_8213BF98") == std::string::npos);
+  CHECK(source.find("835D47B0") == std::string::npos);
+  CHECK(source.find("QuitConfirmOverlay") == std::string::npos);
+  CHECK(!std::filesystem::exists(root / "src/quit_confirm_overlay.cpp"));
+  CHECK(!std::filesystem::exists(root / "src/quit_confirm_overlay.h"));
+}
+
+void TestMainMenuQuitUsesWindowCloseExit() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string app = check::ReadText(root / "src/crackdown_app.h");
+  CHECK(app.find("void OnClosing(rex::ui::UIEvent& e) override") != std::string::npos);
+  CHECK(app.find("void RequestHardExitFromUIThread()") != std::string::npos);
+  CHECK(app.find("void HardExitFromUIThread()") != std::string::npos);
+  CHECK(app.find("SetQuitHandler([this] { RequestHardExitFromUIThread(); })") != std::string::npos);
+  CHECK(app.find("std::_Exit(0);") != std::string::npos);
+  const std::string quit = check::ReadText(root / "src/main_menu_quit.cpp");
+  CHECK(quit.find("DEBUG_SAULO main-menu quit: hard exit deferred") != std::string::npos);
+  CHECK(quit.find("DEBUG_SAULO main-menu quit: using window-close exit path") != std::string::npos);
+  CHECK(quit.find("QuitFromUIThread") == std::string::npos);
+}
+
 void TestMouseLookHooksAreWired() {
   const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
   const std::string overrides = check::ReadText(root / "config/overrides.toml");
@@ -230,6 +286,8 @@ int main() {
   TestRagdollPoseDtHookIsWired();
   TestCameraLiftDivisorHookIsWired();
   TestCameraRollbackHookIsWired();
+  TestMainMenuQuitHookIsWired();
+  TestMainMenuQuitUsesWindowCloseExit();
   TestXamLaunchTitleOwnsPath();
   TestCompareStringNUsesRealLengths();
   TestScissorEdgesCompareSigned();

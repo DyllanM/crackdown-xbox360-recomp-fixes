@@ -205,6 +205,7 @@ set(CRACKDOWN_SOURCES
     src/launcher_achievements_page.cpp
     src/log_filter.cpp
     src/log_path.cpp
+    src/main_menu_quit.cpp
     src/massive_server_guard.cpp
     src/mouse_look.cpp
     src/nan_guards.cpp

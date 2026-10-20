@@ -182,3 +182,40 @@ address = 0x826A7918
 name = "crackdown_variable_step_frame_ms"
 registers = ["r11"]
 after_instruction = true
+
+# The main menu's quit block disables the live Quit button when the frontend session flag is clear, while the other
+# menu items take their event-handler branch. Use the game's existing handler branch, then fall through its own enable
+# call instead of the branch that skips it.
+[[midasm_hook]]
+address = 0x8267839C
+name = "crackdown_main_menu_quit_use_handler"
+registers = []
+after_instruction = false
+jump_address = 0x826783A0
+
+[[midasm_hook]]
+address = 0x826783B4
+name = "crackdown_main_menu_quit_handler_attached"
+registers = []
+after_instruction = false
+jump_address = 0x826783B8
+
+[[midasm_hook]]
+address = 0x826783B8
+name = "crackdown_main_menu_quit_enable"
+registers = ["r4", "r11", "r31"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x826783C0
+name = "crackdown_main_menu_quit_setup_complete"
+registers = []
+after_instruction = true
+
+# The native popup's shared class uses this state to choose its action. State 2 gives the Quit title and
+# leaves the popup result callback inert, so the port can defer shutdown instead of running Save and Quit.
+[[midasm_hook]]
+address = 0x82678778
+name = "crackdown_main_menu_quit_popup_state"
+registers = ["r11"]
+after_instruction = true
