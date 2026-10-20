@@ -57,6 +57,7 @@ constexpr uint32_t kTimerEntry = kCodeBase + 0x200;
 constexpr uint32_t kBusyEntry = kCodeBase + 0x300;
 constexpr uint32_t kMainEntry = kCodeBase + 0x400;
 constexpr uint32_t kRunawayEntry = kCodeBase + 0x500;
+constexpr uint32_t kNormalExitEntry = kCodeBase + 0x600;
 
 // Relative kernel intervals, in 100 ns units.
 constexpr int64_t kPollerSleep = -500 * 10000;
@@ -74,6 +75,7 @@ struct Title {
   object_ref<XTimer> timer;
   uint32_t scratch = 0;
   std::atomic<bool> poller_asleep{false};
+  std::atomic<bool> normal_exited{false};
   std::atomic<bool> finished{false};
   std::atomic<bool> teardown{false};
   std::atomic<int> late_rounds{0};
@@ -131,19 +133,29 @@ REX_FUNC(Runaway) {
   }
 }
 
+REX_FUNC(NormalExit) {
+  GuestRound(base, 4);
+  title.normal_exited.store(true);
+}
+
 // Exit Game: XamLoaderLaunchTitle terminates the title on the main thread. The poller has just fallen asleep, so
 // its sleep outlasts the termination.
 REX_FUNC(Main) {
   static_cast<void>(base);
-  while (!title.poller_asleep.load()) {
+  while (!title.poller_asleep.load() || !title.normal_exited.load()) {
     Delay(kShortSleep);
   }
   Delay(-20 * 10000);
   title.runtime->kernel_state()->TerminateTitle();
 }
 
-const PPCFuncMapping kMappings[] = {{kPollerEntry, Poller}, {kTimerEntry, TimerWaiter}, {kBusyEntry, Busy},
-                                   {kMainEntry, Main},     {kRunawayEntry, Runaway},  {0, nullptr}};
+const PPCFuncMapping kMappings[] = {{kPollerEntry, Poller},
+                                   {kTimerEntry, TimerWaiter},
+                                   {kBusyEntry, Busy},
+                                   {kMainEntry, Main},
+                                   {kRunawayEntry, Runaway},
+                                   {kNormalExitEntry, NormalExit},
+                                   {0, nullptr}};
 
 object_ref<XThread> Start(rex::system::KernelState* kernel, uint32_t entry, bool main) {
   object_ref<XThread> thread(new XThread(kernel, 64 * 1024, 0, entry, 0, 0, true, main));
@@ -175,9 +187,10 @@ int RunChild(bool runaway) {
   auto poller = Start(kernel, kPollerEntry, false);
   auto timer_waiter = Start(kernel, kTimerEntry, false);
   auto busy = Start(kernel, kBusyEntry, false);
+  auto normal_exit = Start(kernel, kNormalExitEntry, false);
   auto runaway_thread = runaway ? Start(kernel, kRunawayEntry, false) : object_ref<XThread>();
   auto main_thread = Start(kernel, kMainEntry, true);
-  if (!poller || !timer_waiter || !busy || (runaway && !runaway_thread) || !main_thread) {
+  if (!poller || !timer_waiter || !busy || !normal_exit || (runaway && !runaway_thread) || !main_thread) {
     return kSetupFailed;
   }
 
@@ -191,6 +204,7 @@ int RunChild(bool runaway) {
   poller.reset();
   timer_waiter.reset();
   busy.reset();
+  normal_exit.reset();
   runaway_thread.reset();
   title.timer.reset();
 

@@ -47,7 +47,11 @@ std::string ReadSource(const char* name) {
   std::ifstream in(std::string(CRACKDOWN_SRC_DIR) + "/" + name, std::ios::binary);
   std::ostringstream text;
   text << in.rdbuf();
-  return text.str();
+  std::string source = text.str();
+  for (size_t at = 0; (at = source.find("\r\n", at)) != std::string::npos;) {
+    source.erase(at, 1);
+  }
+  return source;
 }
 
 bool Has(const std::string& text, const char* needle) {
@@ -480,11 +484,11 @@ void TestWiring() {
   CHECK(!Has(app, "MiniDump"));
 
   const std::string closing = FunctionBody(app, "void OnClosing(");
-  const size_t closing_finalize = closing.find("crackdown::FinalizeSessionLog();");
-  const size_t closing_terminate = closing.find("TerminateTitle();");
-  CHECK(closing_finalize != std::string::npos);
-  CHECK(closing_terminate != std::string::npos);
-  CHECK(closing_finalize < closing_terminate);
+  CHECK(Has(closing, "crackdown::FinalizeSessionLog();"));
+  CHECK(Has(closing, "rex::FlushLogging();"));
+  CHECK(Has(closing, "std::_Exit(0);"));
+  CHECK(!Has(closing, "TerminateTitle"));
+  CHECK(!Has(closing, "StopTitleThreads"));
 
   const std::string shutdown = FunctionBody(app, "void OnShutdown(");
   CHECK(Has(shutdown, "crackdown::FinalizeSessionLog();"));

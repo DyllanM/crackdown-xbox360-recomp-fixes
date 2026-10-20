@@ -250,17 +250,13 @@ class CrackdownApp : public rex::ReXApp {
     crackdown::FinalizeSessionLog();
   }
 
-  // Window close is a hard exit, which skips the clean-exit finalizer, so the session log is finalized
-  // before the process ends.
+  // A window close must not wait for guest threads: the OS reclaims the process. Finalizing here is the
+  // only chance to apply the logging policy before the hard exit.
   void OnClosing(rex::ui::UIEvent& e) override {
     (void)e;
     DetachWindowHost();
-    REXLOG_INFO("Window closing, shutting down...");
+    REXLOG_INFO("Window closing, hard-exiting process.");
     crackdown::FinalizeSessionLog();
-    if (runtime() && runtime()->kernel_state()) {
-      runtime()->kernel_state()->TerminateTitle();
-    }
-    REXLOG_INFO("Title terminated; hard-exiting process.");
     rex::FlushLogging();
     std::_Exit(0);
   }
