@@ -182,6 +182,7 @@ set(CRACKDOWN_SOURCES
     src/audio_pcm_firewall.cpp
     src/audio_wave_timeout.cpp
     src/cache_device.cpp
+    src/character_step_fixes.cpp
     src/cheat_hooks.cpp
     src/cheat_menu_input.cpp
     src/cheat_menu_overlay.cpp

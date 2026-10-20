@@ -113,6 +113,18 @@ void TestUnusedLocalsKeepGuestReads() {
   CHECK(HasLine(patch, "-  uint8_t rex_w = rex & 0b1000;"));
 }
 
+void TestLedgeSnapDownHookIsWired() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string overrides = check::ReadText(root / "config/overrides.toml");
+  const size_t hook = overrides.find("address = 0x822B5634");
+  CHECK(hook != std::string::npos);
+  CHECK(overrides.find("name = \"crackdown_ledge_snap_down\"", hook) != std::string::npos);
+  CHECK(overrides.find("registers = [\"f0\"]", hook) != std::string::npos);
+  CHECK(overrides.find("after_instruction = false", hook) != std::string::npos);
+  const std::string cmake = check::ReadText(root / "CMakeLists.txt");
+  CHECK(cmake.find("src/character_step_fixes.cpp") != std::string::npos);
+}
+
 void TestInvalidFetchPatchOnlyReplacesTheWarning() {
   const std::string patch = ReadPatch("0064-");
   CHECK(!patch.empty());
@@ -146,6 +158,7 @@ int main() {
   TestXamEnumerateCountStartsAtZero();
   TestPatchedSourceHasNoUninitialisedCount();
   TestMassiveCountHookIsWired();
+  TestLedgeSnapDownHookIsWired();
   TestXamLaunchTitleOwnsPath();
   TestCompareStringNUsesRealLengths();
   TestScissorEdgesCompareSigned();

@@ -53,6 +53,14 @@ name = "crackdown_look_target_guard"
 registers = ["r31"]
 after_instruction = false
 
+# The ledge and slope follower divides its snap-down pull by the step's dt; scale it so it is divided by the title's
+# original 1/30 s step instead.
+[[midasm_hook]]
+address = 0x822B5634
+name = "crackdown_ledge_snap_down"
+registers = ["f0"]
+after_instruction = false
+
 # Sanitizes the mixed frame before XAudioSubmitRenderDriverFrame in sub_82A4BEF8; r4 is the frame address.
 [[midasm_hook]]
 address = 0x82A4BF40

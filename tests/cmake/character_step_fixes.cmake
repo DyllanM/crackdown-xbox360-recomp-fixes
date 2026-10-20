@@ -1,0 +1,1 @@
+crackdown_add_test(character_step_fixes_tests SOURCES character_step_fixes_tests.cpp)
