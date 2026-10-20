@@ -1757,16 +1757,18 @@ Modified to use the Crackdown launcher accent color and a lighter tint of it.
 The ICO and PNG icon files are renderings of the modified SVG.
 
 ========================================================================
-Unowa001/crackdown-recomp, keyboard and mouse input, audio hooks, GPU performance, vector multiply-add and dot products
+Unowa001/crackdown-recomp, keyboard and mouse input, audio hooks, GPU performance, vector multiply-add and dot products,
+step-down snap
 
-Source: https://github.com/Unowa001/crackdown-recomp (patches/sdk/0006, commit 5c31aea; patches/sdk/0018 and
-patches/sdk/0020, crackdown/src/hooks_xaudio.cpp and hooks_events.cpp, commit c23c6ff; patches/sdk/0021 to 0024 and
-0026, commit f959e96)
+Source: https://github.com/Unowa001/crackdown-recomp (patches/sdk/0006 and the sub_822B4D40 hook in
+crackdown/src/hooks_framerate.cpp, commit 5c31aea; patches/sdk/0018 and patches/sdk/0020, crackdown/src/hooks_xaudio.cpp
+and hooks_events.cpp, commit c23c6ff; patches/sdk/0021 to 0024 and 0026, commit f959e96)
 License: BSD 3-Clause
 
 patches/rexglue-sdk/0054 and 0055 are adapted from 0018 and 0020, the hooks in src/audio_guest_sync.cpp from
-hooks_xaudio.cpp and hooks_events.cpp, patches/rexglue-sdk/0078 to 0083 from 0021 to 0024 and 0026, and
-patches/rexglue-sdk/0092 from 0006. Each starts with the same attribution.
+hooks_xaudio.cpp and hooks_events.cpp, patches/rexglue-sdk/0078 to 0083 from 0021 to 0024 and 0026,
+patches/rexglue-sdk/0092 from 0006, and GroundSnapVelocity in src/frame_timing.h from the sub_822B4D40 hook
+(--sim_ground_snap_30hz). Each starts with the same attribution.
 
 BSD 3-Clause License
 

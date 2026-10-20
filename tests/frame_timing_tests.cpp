@@ -144,6 +144,25 @@ void TestPacerUnlimited() {
   CHECK(frame.release_ns == 4 * kSecond && frame.step.seconds == 1.0 / 144);
 }
 
+// The snap's velocity is drop * gain / dt; the hook makes it drop * gain * 30 for steps shorter than a 30 FPS frame.
+void TestGroundSnap() {
+  constexpr float kDropTimesGain = 0.25f;
+  auto title_velocity = [](float dt) { return kDropTimesGain / dt; };
+  for (const int rate : {60, 90, 120, 144, 165, 240}) {
+    const float dt = FixedFrameStep(rate).seconds_f;
+    CHECK(std::fabs(GroundSnapVelocity(title_velocity(dt), dt) - kDropTimesGain * 30.0f) < 1e-4f);
+  }
+  // 30 FPS, as fixed and as measured (33 or 34 ms), and a missed 60 FPS frame stepped as 2/60, stay stock.
+  for (const float dt : {FixedFrameStep(30).seconds_f, 0.033f, 0.034f, 2.0f / 60.0f, 0.05f}) {
+    CHECK(GroundSnapVelocity(title_velocity(dt), dt) == title_velocity(dt));
+  }
+  // A paused or degenerate step is left alone.
+  CHECK(GroundSnapVelocity(5.0f, 0.0f) == 5.0f);
+  CHECK(GroundSnapVelocity(5.0f, -0.01f) == 5.0f);
+  // No snap this step.
+  CHECK(GroundSnapVelocity(0.0f, 1.0f / 60) == 0.0f);
+}
+
 }  // namespace
 
 int main() {
@@ -155,5 +174,6 @@ int main() {
   TestPacerOnTime();
   TestPacerLate();
   TestPacerUnlimited();
+  TestGroundSnap();
   return check::Finish("frame_timing_tests");
 }

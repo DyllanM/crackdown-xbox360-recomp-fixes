@@ -90,6 +90,18 @@ constexpr FrameStep StepFromSeconds(double seconds) {
   return {seconds, float(seconds), seconds * kOriginalFrameRate};
 }
 
+// The character's step-down snap (sub_822B4D40) ends with out.y = -(clamp(drop) * gain) / dt: it pulls the player down
+// the whole drop in one step, so a stair or slope drop gives twice the downward speed at 60 FPS, which the character
+// proxy turns into forward speed (the stairs and downhill speed bug). Below kGroundSnapMaxStep the velocity is scaled
+// by dt * 30, i.e. divided by 1/30 instead of dt, so it covers the drop over the time it takes at 30 FPS. A 30 FPS
+// frame, measured at 33 or 34 ms, keeps the title's value. Adapted from Unowa001/crackdown-recomp
+// (--sim_ground_snap_30hz, BSD 3-Clause).
+inline constexpr float kGroundSnapMaxStep = 1.0f / 32.0f;
+
+constexpr float GroundSnapVelocity(float velocity, float dt) {
+  return dt > 0.0f && dt < kGroundSnapMaxStep ? velocity * (dt * float(kOriginalFrameRate)) : velocity;
+}
+
 // 30 and 60 present at the guest vblank, so a slow frame is already free of host pacing; this measures how far
 // behind it fell and compensates instead of letting a fixed per-call step turn the slowdown into slow motion. A
 // frame close to a whole number of the rate's own steps (within the tolerance) snaps to exactly that many, so

@@ -272,6 +272,12 @@ void crackdown_variable_step_frame_ms(PPCRegister& frame_ms) {
   }
 }
 
+// Codegen midasm hook after the `fdivs f0,f0,f20` at 822B5634 in sub_822B4D40: f0 is the step-down snap's downward
+// velocity, f20 the step's dt, and the next instructions negate f0 into out.y.
+void crackdown_ground_snap_velocity(PPCRegister& velocity, PPCRegister& dt) {
+  velocity.f64 = double(crackdown::GroundSnapVelocity(float(velocity.f64), float(dt.f64)));
+}
+
 double crackdown::OriginalStepsPerUpdate() {
   return g_original_steps.load(std::memory_order_relaxed);
 }

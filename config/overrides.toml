@@ -40,6 +40,14 @@ name = "crackdown_audio_wave_timeout_tick"
 registers = ["r11", "r30"]
 after_instruction = true
 
+# The step-down snap in sub_822B4D40 ends with out.y = -(clamp(drop) * gain) / dt; above 30 FPS the velocity gets the
+# 30 FPS value (f0 after `fdivs f0,f0,f20`), or running down stairs and slopes builds up speed.
+[[midasm_hook]]
+address = 0x822B5634
+name = "crackdown_ground_snap_velocity"
+registers = ["f0", "f20"]
+after_instruction = true
+
 # The variable-step frame time (`li rN,16` where the fixed step would take 33 ms) follows the selected frame rate.
 [[midasm_hook]]
 address = 0x82287194

@@ -88,6 +88,21 @@ void TestInvalidFetchPatchOnlyReplacesTheWarning() {
   CHECK(HasLine(patch, "       return;"));
 }
 
+void TestGroundSnapHookIsWired() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string overrides = check::ReadText(root / "config/overrides.toml");
+  const size_t hook = overrides.find("address = 0x822B5634");
+  CHECK(hook != std::string::npos);
+  const size_t next = overrides.find("[[midasm_hook]]", hook);
+  const std::string entry = overrides.substr(hook, next == std::string::npos ? std::string::npos : next - hook);
+  CHECK(entry.find("name = \"crackdown_ground_snap_velocity\"") != std::string::npos);
+  CHECK(entry.find("registers = [\"f0\", \"f20\"]") != std::string::npos);
+  CHECK(entry.find("after_instruction = true") != std::string::npos);
+  const std::string pacing = check::ReadText(root / "src/frame_pacing.cpp");
+  CHECK(pacing.find("void crackdown_ground_snap_velocity(PPCRegister& velocity, PPCRegister& dt)") !=
+        std::string::npos);
+}
+
 // Every vector multiply-add and dot product the codegen emits goes through the single-rounding helpers.
 void TestVectorMultiplyAddIsFused() {
   const std::string patch = ReadPatch("0092-");
@@ -121,6 +136,7 @@ int main() {
   TestPatchedSourceHasNoUninitialisedCount();
   TestMassiveCountHookIsWired();
   TestInvalidFetchPatchOnlyReplacesTheWarning();
+  TestGroundSnapHookIsWired();
   TestVectorMultiplyAddIsFused();
   return check::Finish("sdk_patch_guards_tests");
 }

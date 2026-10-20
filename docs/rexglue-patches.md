@@ -91,3 +91,6 @@ return (`crackdown_audio_barrier_escape`). The `crackdown_variable_step_frame_ms
 frame-time sites the host-paced frame time above 60 FPS. `crackdown_audio_wave_timeout_tick` at `0x8225B254` advances a
 wave's safety timeout at 30 Hz at any frame rate, so speech is not stopped early above 30 FPS.
 `crackdown_audio_pcm_firewall` sanitizes the mixed audio frame before it is submitted.
+`crackdown_ground_snap_velocity` at `0x822B5634` gives the character's step-down snap in `sub_822B4D40` (`out.y =
+-(clamp(drop) * gain) / dt`) its 30 FPS velocity above 30 FPS, so running down stairs and slopes no longer builds up
+speed (adapted from Unowa001/crackdown-recomp's `--sim_ground_snap_30hz`; `GroundSnapVelocity` in `src/frame_timing.h`).
