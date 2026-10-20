@@ -1,5 +1,8 @@
 #pragma once
 
+#include <filesystem>
+#include <optional>
+
 namespace crackdown {
 
 // Registers the clean-exit finalizer once. With Detailed logging off, a normal process exit then
@@ -10,5 +13,12 @@ void InstallSessionLogCleanup();
 // already contains a CRASH REPORT. Call before a controlled hard exit, and at normal exit through
 // atexit.
 void FinalizeSessionLog();
+
+// The launcher and the game share one normal log. A relaunch hands the active log to the next
+// process: Begin sets the inherited path, Cancel clears it when the relaunch fails, and the child
+// takes it once the previous process has exited.
+void BeginSessionLogHandoff();
+void CancelSessionLogHandoff();
+std::optional<std::filesystem::path> TakeInheritedSessionLog();
 
 }  // namespace crackdown

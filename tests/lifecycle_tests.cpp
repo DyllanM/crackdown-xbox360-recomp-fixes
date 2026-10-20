@@ -110,6 +110,36 @@ void TestEmergencyFallbackRetained() {
   CHECK(!Has(patch, "pthread_cancel("));
 }
 
+void TestRelaunchHandsOffTheSessionLog() {
+  std::printf("a relaunch hands the session log to the replacement process\n");
+  const std::string session = ReadSource("session_log.cpp");
+  const size_t handed_off = session.find("g_handed_off.load(");
+  const size_t detailed = session.find("DetailedLoggingEnabled()");
+  CHECK(handed_off != std::string::npos);
+  CHECK(detailed != std::string::npos);
+  CHECK(handed_off < detailed);  // a successful handoff wins over the Detailed setting
+  CHECK(Has(session, "CRACKDOWN_SESSION_LOG"));
+  CHECK(Has(session, "CRACKDOWN_SESSION_PARENT"));
+  CHECK(Has(session, "SetEnvironmentVariableW(kSessionLogVariable, path.c_str());"));
+  CHECK(Has(session, "WaitForPreviousProcess(parent);"));
+
+  const std::string app = ReadSource("crackdown_app.h");
+  const std::string configure = FunctionBody(app, "void OnConfigurePaths(");
+  const size_t inherit = configure.find("crackdown::TakeInheritedSessionLog()");
+  const size_t user_data = configure.find("ChooseUserData(");
+  CHECK(inherit != std::string::npos);
+  CHECK(user_data != std::string::npos);
+  CHECK(inherit < user_data);
+  CHECK(Has(configure, "SetFlagFromCommandLine(\"log_file\""));
+
+  const std::string platform = ReadSource("platform.cpp");
+  const size_t begin = platform.rfind("BeginSessionLogHandoff();");
+  const size_t spawn = platform.find("posix_spawn(");
+  CHECK(begin != std::string::npos);
+  CHECK(spawn != std::string::npos);
+  CHECK(begin < spawn);
+}
+
 }  // namespace
 
 int main() {
@@ -117,5 +147,6 @@ int main() {
   TestOrderlyExitKeepsTeardown();
   TestInputCallbackDetachesFirst();
   TestEmergencyFallbackRetained();
+  TestRelaunchHandsOffTheSessionLog();
   return check::Finish("lifecycle_tests");
 }

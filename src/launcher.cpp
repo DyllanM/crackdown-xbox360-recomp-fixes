@@ -39,6 +39,7 @@
 #include "launcher_achievements_page.h"
 #include "launcher_pages.h"
 #include "launcher_quit.h"
+#include "log_filter.h"
 #include "platform.h"
 #include "presentation_setting.h"
 #include "settings.h"
@@ -849,8 +850,11 @@ class LauncherDialog final : public rex::ui::ImGuiDialog {
     }
     ui.ResetAllRow();
     ui.Heading("Diagnostics");
-    ui.Toggle("Detailed logging", "Keeps logs for normal sessions. Crash diagnostics are always preserved.",
-              "crackdown_detailed_logging", true);
+    if (ui.Toggle("Detailed logging", "Keeps logs for normal sessions. Crash diagnostics are always preserved.",
+                  "crackdown_detailed_logging", true)) {
+      rex::cvar::SetFlagByName("crackdown_detailed_logging", settings_.Get("crackdown_detailed_logging", "true"));
+      ApplyDetailedLogging();
+    }
     if (ui.ButtonRow("Logs folder", "Open the folder containing session and crash logs", "Open logs folder")) {
       OpenLogsFolder();
     }

@@ -78,11 +78,15 @@ void TestWiring() {
   const std::string platform = check::ReadText(src / "platform.cpp");
   CHECK(Has(platform, "MakeRelaunchCommand(std::move(args), std::getenv(\"APPIMAGE\")"));
   CHECK(Has(platform, "posix_spawn(&pid, command->executable.c_str()"));  // no shell, no command string
+  CHECK(Has(platform, "BeginSessionLogHandoff();"));
+  CHECK(Has(platform, "CancelSessionLogHandoff();"));
   CHECK(!Has(platform, "system("));
   CHECK(!Has(platform, "popen("));
 
   const std::string app = check::ReadText(src / "crackdown_app.h");
   CHECK(Has(app, "crackdown::RelaunchSelf(L\"--crackdown_skip_launcher=true\")"));
+  CHECK(Has(app, "crackdown::TakeInheritedSessionLog()"));
+  CHECK(Has(app, "SetFlagFromCommandLine(\"log_file\""));
 
   const std::string apprun = check::ReadText(src / ".." / "packaging" / "linux" / "AppRun");
   CHECK(Has(apprun, "HERE=\"$(dirname \"$(readlink -f \"$0\")\")\""));  // not the working directory

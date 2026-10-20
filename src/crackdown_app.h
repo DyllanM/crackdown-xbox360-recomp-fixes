@@ -56,6 +56,10 @@ class CrackdownApp : public rex::ReXApp {
  protected:
   void OnConfigurePaths(rex::PathConfig& paths) override {
     shipped_config_ = paths.config_path;
+    if (const auto inherited = crackdown::TakeInheritedSessionLog()) {
+      rex::cvar::SetFlagFromCommandLine("log_file", crackdown::Utf8(*inherited));
+      crackdown::InstallCrashReports();
+    }
     const std::filesystem::path port_folder = crackdown::PortFolder();
     if (paths.game_data_root.empty()) {
       paths.game_data_root = port_folder / "game";
@@ -198,6 +202,14 @@ class CrackdownApp : public rex::ReXApp {
 #if defined(_WIN32)
     REXLOG_INFO("Scheduling: {}", trg::TuneProcessScheduling());
 #endif
+    if (window()) {
+      const uint32_t width = window()->GetActualLogicalWidth();
+      const uint32_t height = window()->GetActualLogicalHeight();
+      if (width != 0 && height != 0) {
+        REXLOG_INFO("Window: {}x{} at {} DPI, {}", width, height, window()->GetDpi(),
+                    window()->IsFullscreen() ? "borderless fullscreen" : "windowed");
+      }
+    }
     if (runtime()) {
       MountCacheDevice(runtime()->file_system(), user_data_root());
       crackdown::InstallCrashDiagnostics(runtime()->virtual_membase());

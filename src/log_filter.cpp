@@ -27,6 +27,8 @@ constexpr std::string_view kEssentialInfo[] = {
     "Aspect ratio:",
     "Language:",
     "Frame rate:",
+    "Window: ",
+    "Window mode: ",
     "DXGI adapter:",
     "Vulkan device:",
     "Vulkan instance API version",
