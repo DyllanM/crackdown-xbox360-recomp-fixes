@@ -5,8 +5,8 @@ result is installed over the stock files in `tools/rexglue`. The game compiles a
 must not move virtual functions or data members of classes the generated game code uses.
 
 `NNNN-name.patch` applies on both platforms, `NNNN-name.windows.patch` only on Windows and `NNNN-name.linux.patch` only on
-Linux. Numbers are unique and patches apply in name order; gaps are fine. 52 patches are common, 19 are Windows only and
-13 are Linux only, so 71 apply on Windows and 65 on Linux. Patches 0005 and 0052 change the code generator and are the
+Linux. Numbers are unique and patches apply in name order; gaps are fine. 53 patches are common, 19 are Windows only and
+13 are Linux only, so 72 apply on Windows and 66 apply on Linux. Patches 0005 and 0052 change the code generator and are the
 reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
 
 | # | Platform | Purpose |
@@ -85,6 +85,7 @@ reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the run
 | 0091 | all | warning cleanup without behaviour change except `MakePacketType0`, which now sets its one-register bit (its only caller passes false): `void*` casts for the deliberate texture-key `memcpy`/`memset`, unused parameter names, initializer lists in declaration order, unsigned `-1` sentinels, no pessimizing `std::move`, range-loop references, `= {}` for `X_SLIST_HEADER`, and an unused lambda capture |
 | 0092 | windows | Windows half of 0091 and 0093: full `D3D12_HEAP_PROPERTIES` initializers, a missing `override`, explicit `GetProcAddress` casts, an unused lambda capture and an unused local |
 | 0093 | all | unused locals removed where their initializer has no side effect; guest-memory reads, FidelityFX-only locals and the only use of a parameter keep their evaluation with `[[maybe_unused]]` |
+| 0094 | all | a passive input-activity callback reports each device's changed state from `InputSystem::GetState`; the cursor policy reads it without altering gamepad state, merging or device assignment |
 
 Patches 0054 to 0058 and 0078 to 0083 and the hooks in `src/audio_guest_sync.cpp` are adapted from Unowa001/crackdown-recomp
 (BSD 3-Clause, notice in [THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).

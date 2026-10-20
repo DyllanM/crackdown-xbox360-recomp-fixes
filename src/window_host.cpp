@@ -2,16 +2,16 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
-#include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
-#include <thread>
+#include <unordered_map>
 
 #include <rex/cvar.h>
 #include <rex/input/mnk/mnk_input_driver.h>
 #include <rex/logging.h>
+#include <rex/ui/imgui_dialog.h>
 #include <rex/ui/ui_event.h>
 #include <rex/ui/virtual_key.h>
 #include <rex/ui/window.h>
@@ -19,6 +19,7 @@
 #include <rex/ui/windowed_app_context.h>
 
 #include "cursor_hider.h"
+#include "input_activity.h"
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -28,7 +29,6 @@ namespace {
 
 // Above ReXApp's input listener (z-order 0), so F11 is consumed before the guest sees it.
 constexpr size_t kWindowHostZOrder = 1000;
-constexpr std::chrono::milliseconds kCursorTickInterval{250};
 
 // SDL's repeat flag follows its own key bookkeeping, which a fullscreen change can reset.
 bool IsF11PhysicallyDown() {
@@ -37,6 +37,26 @@ bool IsF11PhysicallyDown() {
 #else
   return false;
 #endif
+}
+
+bool IsGameplayKey(const rex::ui::KeyEvent& e) {
+  switch (e.virtual_key()) {
+    case rex::ui::VirtualKey::kNone:
+    case rex::ui::VirtualKey::kPacket:
+    case rex::ui::VirtualKey::kProcessKey:
+    case rex::ui::VirtualKey::kEscape:
+    case rex::ui::VirtualKey::kF2:
+    case rex::ui::VirtualKey::kF3:
+    case rex::ui::VirtualKey::kF4:
+    case rex::ui::VirtualKey::kF7:
+    case rex::ui::VirtualKey::kF10:
+    case rex::ui::VirtualKey::kF11:
+    case rex::ui::VirtualKey::kF12:
+    case rex::ui::VirtualKey::kOem3:
+      return false;
+    default:
+      return true;
+  }
 }
 
 #if defined(_WIN32)
@@ -76,77 +96,160 @@ RECT RestoredWindowedRect(const rex::ui::Window* window, HWND hwnd, const std::o
 }
 #endif
 
+void OnControllerActivity(rex::input::DeviceId device, const rex::input::X_INPUT_GAMEPAD& gamepad);
+
 class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::WindowListener {
  public:
-  void Attach(rex::ui::Window* window, rex::ui::WindowedAppContext& context, std::function<bool()> mouse_free,
-              std::function<void()> toggle_window_mode) {
+  void Attach(rex::ui::Window* window, rex::ui::WindowedAppContext& context,
+              std::function<bool()> ui_wants_mouse, std::function<void()> toggle_window_mode) {
     window_ = window;
-    context_ = &context;
-    mouse_free_ = std::move(mouse_free);
+    context_.store(&context, std::memory_order_relaxed);
+    ui_wants_mouse_ = std::move(ui_wants_mouse);
     toggle_window_mode_ = std::move(toggle_window_mode);
+    cursor_ = crackdown::CursorHider{};
+    cursor_.SetFocused(window->HasFocus());
+    {
+      std::lock_guard lock(filters_mutex_);
+      filters_.clear();
+    }
+    active_.store(true, std::memory_order_relaxed);
     window_->AddInputListener(this, kWindowHostZOrder);
     window_->AddListener(this);
-    cursor_thread_ = std::thread([this] { CursorTickLoop(); });
+    rex::input::SetInputActivityCallback(OnControllerActivity);
+    UpdateCursor();
   }
 
   void Detach() {
     if (!window_) {
       return;
     }
+    rex::input::SetInputActivityCallback(nullptr);
+    active_.store(false, std::memory_order_relaxed);
+    RestoreCursor();
     {
-      std::lock_guard lock(tick_mutex_);
-      stopping_ = true;
+      std::lock_guard lock(filters_mutex_);
+      filters_.clear();
     }
-    tick_wake_.notify_all();
-    if (cursor_thread_.joinable()) {
-      cursor_thread_.join();
-    }
-    window_->SetCursorVisibility(rex::ui::Window::CursorVisibility::kVisible);
     window_->RemoveInputListener(this);
     window_->RemoveListener(this);
+    context_.store(nullptr, std::memory_order_relaxed);
     window_ = nullptr;
+    ui_wants_mouse_ = nullptr;
+    toggle_window_mode_ = nullptr;
+  }
+
+  void SetOverlayOpen(bool open) {
+    if (!active_.load(std::memory_order_relaxed)) {
+      return;
+    }
+    cursor_.SetOverlayOpen(open);
+    UpdateCursor();
+  }
+
+  void OnClosing(rex::ui::UIEvent&) override {
+    rex::input::SetInputActivityCallback(nullptr);
+    active_.store(false, std::memory_order_relaxed);
+    RestoreCursor();
   }
 
   void OnKeyDown(rex::ui::KeyEvent& e) override {
-    if (!IsToggleKey(e)) {
+    if (e.target() != window_) {
       return;
     }
-    e.set_handled(true);
-    const bool physical_down = IsF11PhysicallyDown();
-    if (e.prev_state() || (latched_ && physical_down)) {
+    if (e.virtual_key() == rex::ui::VirtualKey::kF11) {
+      e.set_handled(true);
+      const bool physical_down = IsF11PhysicallyDown();
+      if (e.prev_state() || (latched_ && physical_down)) {
+        return;
+      }
+      latched_ = true;
+      ToggleFullscreen();
       return;
     }
-    latched_ = true;
-    ToggleFullscreen();
+    if (!IsGameplayKey(e) || e.prev_state() || cursor_.overlay_open()) {
+      return;
+    }
+    cursor_.KeyboardInput();
+    UpdateCursor();
   }
 
   void OnKeyUp(rex::ui::KeyEvent& e) override {
-    if (!IsToggleKey(e)) {
+    if (e.virtual_key() != rex::ui::VirtualKey::kF11 || e.target() != window_) {
       return;
     }
     e.set_handled(true);
     ReleaseLatchIfPhysicallyUp();
   }
 
-  void OnMouseMove(rex::ui::MouseEvent&) override {
-    std::lock_guard lock(cursor_mutex_);
-    cursor_.MouseMoved(crackdown::CursorHider::Clock::now());
-    UpdateCursorLocked();
-  }
+  void OnMouseMove(rex::ui::MouseEvent& e) override { NoteMouse(e); }
+  void OnMouseDown(rex::ui::MouseEvent& e) override { NoteMouse(e); }
+  void OnMouseWheel(rex::ui::MouseEvent& e) override { NoteMouse(e); }
 
   void OnResize(rex::ui::UISetupEvent&) override { ApplyPendingWindowedRect(); }
   void OnGotFocus(rex::ui::UISetupEvent&) override {
     ReleaseLatchIfPhysicallyUp();
+    cursor_.SetFocused(true);
     UpdateCursor();
   }
   void OnLostFocus(rex::ui::UISetupEvent&) override {
     ReleaseLatchIfPhysicallyUp();
+    cursor_.SetFocused(false);
     UpdateCursor();
   }
 
+  void HandleControllerActivity(rex::input::DeviceId device, const rex::input::X_INPUT_GAMEPAD& gamepad) {
+    if (!active_.load(std::memory_order_relaxed)) {
+      return;
+    }
+    bool started = false;
+    {
+      std::lock_guard lock(filters_mutex_);
+      started = filters_[static_cast<uint64_t>(device)].Update(gamepad);
+    }
+    if (!started) {
+      return;
+    }
+    rex::ui::WindowedAppContext* context = context_.load(std::memory_order_relaxed);
+    if (!context) {
+      return;
+    }
+    context->CallInUIThread([this] {
+      if (!active_.load(std::memory_order_relaxed)) {
+        return;
+      }
+      cursor_.ControllerInput();
+      UpdateCursor();
+    });
+  }
+
+  // Runs on the UI thread.
+  void UpdateCursor() {
+    if (!window_ || !active_.load(std::memory_order_relaxed)) {
+      return;
+    }
+    const bool ui_wants_mouse = ui_wants_mouse_ && ui_wants_mouse_();
+    if (crackdown::MouseLookOwnsCursor(window_->HasFocus(), cursor_.overlay_open(), ui_wants_mouse,
+                                       rex::cvar::Query<bool>("mnk_mode"), rex::cvar::Query<bool>("mnk_mouse"),
+                                       rex::input::mnk::IsMouseLookActive())) {
+      return;
+    }
+    const bool visible = cursor_.visible() || ui_wants_mouse;
+    const auto wanted =
+        visible ? rex::ui::Window::CursorVisibility::kVisible : rex::ui::Window::CursorVisibility::kHidden;
+    if (window_->GetCursorVisibility() != wanted) {
+      window_->SetCursorVisibility(wanted);
+    }
+  }
+
  private:
-  bool IsToggleKey(const rex::ui::KeyEvent& e) const {
-    return e.virtual_key() == rex::ui::VirtualKey::kF11 && e.target() == window_;
+  void NoteMouse(rex::ui::MouseEvent& e) {
+    if (e.target() != window_ || !window_->HasFocus()) {
+      return;
+    }
+    if (!cursor_.overlay_open() && !(ui_wants_mouse_ && ui_wants_mouse_())) {
+      cursor_.MouseMoved();
+    }
+    UpdateCursor();
   }
 
   void ToggleFullscreen() {
@@ -199,76 +302,52 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
     }
   }
 
-  // Runs on the UI thread.
-  void UpdateCursor() {
-    std::lock_guard lock(cursor_mutex_);
-    UpdateCursorLocked();
-  }
-
-  // Mouse look captures and hides the cursor for aiming, so the auto-hide policy leaves it alone.
-  bool MouseLookAims(bool gameplay) const {
-    return gameplay && window_->HasFocus() && rex::cvar::Query<bool>("mnk_mode") &&
-           rex::cvar::Query<bool>("mnk_mouse") && rex::input::mnk::IsMouseLookActive();
-  }
-
-  void UpdateCursorLocked() {
-    if (!window_) {
-      return;
-    }
-    const bool gameplay = !mouse_free_ || mouse_free_();
-    if (MouseLookAims(gameplay)) {
-      return;
-    }
-    const auto visibility = cursor_.Update(gameplay, window_->IsFullscreen(), window_->HasFocus(),
-                                           crackdown::CursorHider::Clock::now());
-    if (visibility) {
-      window_->SetCursorVisibility(*visibility ? rex::ui::Window::CursorVisibility::kVisible
-                                               : rex::ui::Window::CursorVisibility::kHidden);
-    }
-  }
-
-  // SDL gives no timer event, so a host thread asks the UI thread to check the idle time a few times a second. This
-  // is not an ImGui dialog: a permanent dialog makes the presenter repaint on every vertical blank.
-  void CursorTickLoop() {
-    std::unique_lock lock(tick_mutex_);
-    while (!tick_wake_.wait_for(lock, kCursorTickInterval, [this] { return stopping_; })) {
-      lock.unlock();
-      context_->CallInUIThread([this] {
-        std::lock_guard guard(tick_mutex_);
-        if (!stopping_) {
-          UpdateCursor();
-        }
-      });
-      lock.lock();
+  void RestoreCursor() {
+    if (window_) {
+      window_->SetCursorVisibility(rex::ui::Window::CursorVisibility::kVisible);
     }
   }
 
   rex::ui::Window* window_ = nullptr;
-  rex::ui::WindowedAppContext* context_ = nullptr;
-  std::function<bool()> mouse_free_;
+  std::atomic<rex::ui::WindowedAppContext*> context_{nullptr};
+  std::function<bool()> ui_wants_mouse_;
   std::function<void()> toggle_window_mode_;
   bool latched_ = false;
   bool pending_windowed_rect_ = false;
 #if defined(_WIN32)
   std::optional<RECT> windowed_rect_;
 #endif
-  std::mutex cursor_mutex_;
   crackdown::CursorHider cursor_;
-  std::thread cursor_thread_;
-  std::mutex tick_mutex_;
-  std::condition_variable tick_wake_;
-  bool stopping_ = false;
+  std::atomic<bool> active_{false};
+  std::mutex filters_mutex_;
+  std::unordered_map<uint64_t, crackdown::ControllerActivityFilter> filters_;
 };
 
 WindowHost window_host;
 
-}  // namespace
-
-void AttachWindowHost(rex::ui::Window* window, rex::ui::WindowedAppContext& context, std::function<bool()> mouse_free,
-                      std::function<void()> toggle_window_mode) {
-  window_host.Attach(window, context, std::move(mouse_free), std::move(toggle_window_mode));
+void OnControllerActivity(rex::input::DeviceId device, const rex::input::X_INPUT_GAMEPAD& gamepad) {
+  window_host.HandleControllerActivity(device, gamepad);
 }
 
-void DetachWindowHost() {
-  window_host.Detach();
+class CursorSync final : public rex::ui::ImGuiDialog {
+ public:
+  explicit CursorSync(rex::ui::ImGuiDrawer* drawer) : ImGuiDialog(drawer) {}
+
+ protected:
+  void OnDraw(ImGuiIO&) override { window_host.UpdateCursor(); }
+};
+
+}  // namespace
+
+void AttachWindowHost(rex::ui::Window* window, rex::ui::WindowedAppContext& context,
+                      std::function<bool()> ui_wants_mouse, std::function<void()> toggle_window_mode) {
+  window_host.Attach(window, context, std::move(ui_wants_mouse), std::move(toggle_window_mode));
+}
+
+void DetachWindowHost() { window_host.Detach(); }
+
+void SetCursorOverlayOpen(bool open) { window_host.SetOverlayOpen(open); }
+
+void CreateCursorSync(rex::ui::ImGuiDrawer* drawer) {
+  new CursorSync(drawer);  // retained by the drawer for the session
 }

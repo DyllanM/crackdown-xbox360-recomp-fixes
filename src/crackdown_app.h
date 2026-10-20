@@ -166,6 +166,7 @@ class CrackdownApp : public rex::ReXApp {
     show_launcher_after_runtime_ = false;
     REXLOG_INFO("Launcher shown after the runtime");
     launcher_open_ = true;
+    SetCursorOverlayOpen(true);
     crackdown::LauncherCallbacks callbacks = MakeLauncherCallbacks([this] { ReXApp::LaunchModule(); });
     // Settings the runtime reads at startup take effect only in a new process.
     callbacks.window_changed = [this] { return game_settings_.WindowChanged() || game_settings_.RuntimeChanged(); };
@@ -211,13 +212,18 @@ class CrackdownApp : public rex::ReXApp {
     if (window()) {
       AttachWindowHost(
           window(), app_context(),
-          [this] { return !imgui_drawer() || !imgui_drawer()->GetIO().WantCaptureMouse; },
+          [this] {
+            rex::ui::ImGuiDrawer* drawer = imgui_drawer();
+            return drawer && drawer->GetIO().WantCaptureMouse;
+          },
           [this] { ToggleWindowMode(); });
+      SetCursorOverlayOpen(launcher_open_);
       crackdown::AttachFrameRate(window(), app_context());
       crackdown::CheckWindowDisplay(window()->GetNativeWindowHandle(), REXCVAR_GET(monitor));
     }
     if (imgui_drawer()) {
       crackdown::CreateFrameCounter(imgui_drawer());
+      CreateCursorSync(imgui_drawer());
     }
     game_settings_.MarkRuntimeBuilt();
     crackdown::SetAchievementsCloseRequest(
@@ -232,14 +238,14 @@ class CrackdownApp : public rex::ReXApp {
   void OnFileDrop(rex::ui::FileDropEvent& e) override { crackdown::LauncherFileDropped(e.filename()); }
 
   void OnShutdown() override {
-    // ReXApp destroys the window before the runtime; the input drivers must detach while it still exists.
-    if (auto* input = runtime() ? runtime()->input_system() : nullptr) {
-      input->Shutdown();
-    }
     CloseAchievements();
     cheat_menu_key_.reset();
     CloseCheatMenu();
     DetachWindowHost();
+    // ReXApp destroys the window before the runtime; the input drivers must detach while it still exists.
+    if (auto* input = runtime() ? runtime()->input_system() : nullptr) {
+      input->Shutdown();
+    }
     crackdown::DetachFrameRate();
     crackdown::FinalizeSessionLog();
   }
@@ -248,6 +254,7 @@ class CrackdownApp : public rex::ReXApp {
   // before the process ends.
   void OnClosing(rex::ui::UIEvent& e) override {
     (void)e;
+    DetachWindowHost();
     REXLOG_INFO("Window closing, shutting down...");
     crackdown::FinalizeSessionLog();
     if (runtime() && runtime()->kernel_state()) {
@@ -263,6 +270,7 @@ class CrackdownApp : public rex::ReXApp {
     crackdown::LauncherCallbacks callbacks;
     callbacks.play = [this, start] {
       launcher_open_ = false;
+      SetCursorOverlayOpen(false);
       app_context().CallInUIThreadDeferred([this, start] {
         game_settings_.Apply();
         crackdown::ApplyDetailedLogging();
@@ -280,6 +288,7 @@ class CrackdownApp : public rex::ReXApp {
     };
     callbacks.quit = [this] {
       launcher_open_ = false;
+      SetCursorOverlayOpen(false);
       app_context().CallInUIThreadDeferred([this] { app_context().QuitFromUIThread(); });
     };
     callbacks.window_handle = [this] { return window() ? window()->GetNativeWindowHandle() : nullptr; };
@@ -304,6 +313,7 @@ class CrackdownApp : public rex::ReXApp {
             .scroll_axis = [] { return crackdown::AchievementsScrollAxis(); },
         });
     crackdown::SetAchievementsModal(true);
+    SetCursorOverlayOpen(true);
   }
 
   void CloseAchievements() {
@@ -312,6 +322,7 @@ class CrackdownApp : public rex::ReXApp {
     }
     achievements_.reset();
     crackdown::SetAchievementsModal(false);
+    SetCursorOverlayOpen(false);
   }
 
   void ToggleCheatMenu() {
@@ -331,6 +342,7 @@ class CrackdownApp : public rex::ReXApp {
         imgui_drawer(), crackdown::CheatMenuOverlay::Controls{
                             .finished = [this] { app_context().CallInUIThreadDeferred([this] { CloseCheatMenu(); }); },
                         });
+    SetCursorOverlayOpen(true);
   }
 
   void CloseCheatMenu() {
@@ -339,6 +351,7 @@ class CrackdownApp : public rex::ReXApp {
     }
     cheat_menu_.reset();
     crackdown::cheats::SetMenuInputOpen(false);
+    SetCursorOverlayOpen(false);
   }
 
   std::filesystem::path LogsDir(const std::filesystem::path& user_data_root) const {
