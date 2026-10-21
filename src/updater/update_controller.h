@@ -12,6 +12,7 @@
 #include <trg/platform.h>
 
 #include "updater/github_release.h"
+#include "updater/url_policy.h"
 #include "updater/version.h"
 
 namespace trg::update {
@@ -32,6 +33,9 @@ enum class UpdatePackageKind { kZip, kAppImage };
 struct UpdateConfig {
   std::string current_version;
   std::string releases_url;
+  // Every request and redirect stays on these hosts; package and checksum addresses also start with the prefix.
+  std::vector<std::string> allowed_hosts = GitHubReleaseHosts();
+  std::string download_url_prefix;
   std::string user_agent;
   UpdatePackageKind package_kind = UpdatePackageKind::kZip;
   std::function<std::string(const SemanticVersion&)> asset_name;

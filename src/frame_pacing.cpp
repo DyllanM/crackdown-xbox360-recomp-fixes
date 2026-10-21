@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <random>
 #include <thread>
 
 #if defined(_WIN32)
@@ -26,7 +27,12 @@
 #include "frame_pacing.h"
 #include "frame_timing.h"
 #include "glyph_overlay.h"
+#include "hang_watchdog.h"
 #include "settings.h"
+
+REXCVAR_DEFINE_INT32(crackdown_debug_frame_dips, 0, "Crackdown",
+                     "Developer test of uneven frame rates: 0 off, else the maximum extra delay in ms (up to 100) added "
+                     "before frames, sweeping from none to full every 6 s with random jitter and rare stalls of twice it");
 
 REX_EXTERN(__imp__sub_826A7698);
 REX_EXTERN(__imp__sub_826A6B50);
@@ -34,6 +40,7 @@ REX_EXTERN(__imp__sub_82324938);
 REX_EXTERN(__imp__sub_826B1150);
 REX_EXTERN(__imp__sub_826BC568);
 REX_EXTERN(__imp__sub_826BC3D0);
+REX_EXTERN(__imp__sub_823263D8);
 
 namespace {
 
@@ -57,6 +64,10 @@ constexpr uint32_t kSwapPresentIntervalMask = 0xF00;
 constexpr uint32_t kSwapImmediateAlways = 100;
 // The variable-step frame time the title's inline sites use without the replay branch.
 constexpr uint32_t kVariableStepFrameMs = 16;
+// The frame timer's published frame: a byte set once it has measured one, and that frame's milliseconds. With the
+// fixed step off, the inline sites read `[valid] ? [ms] : 16`.
+constexpr uint32_t kMeasuredFrameValidAddress = 0x82DE3FB0;
+constexpr uint32_t kMeasuredFrameMsAddress = 0x82D99128;
 
 std::atomic<uint32_t> g_step_bits{std::bit_cast<uint32_t>(1.0f / 60.0f)};
 std::atomic<uint32_t> g_frame_ms{kVariableStepFrameMs};
@@ -153,21 +164,47 @@ void SelectVariableStep(uint8_t* base, int rate) {
   }
 }
 
+// crackdown_debug_frame_dips: delays the frame's start, so the pacing below measures it as a late frame exactly like
+// one the GPU could not finish in time.
+void DebugFrameDip() {
+  const int max_ms = REXCVAR_GET(crackdown_debug_frame_dips);
+  static int logged_ms = 0;
+  if (max_ms != logged_ms) {
+    logged_ms = max_ms;
+    if (max_ms > 0) {
+      REXLOG_WARN("Debug frame dips: up to {} ms extra per frame", std::min(max_ms, crackdown::kMaxDebugDipMs));
+    }
+  }
+  if (max_ms <= 0) {
+    return;
+  }
+  static std::mt19937 random{std::random_device{}()};
+  static const int64_t start_ns = NowNs();
+  std::uniform_real_distribution<double> unit(0.0, 1.0);
+  const int64_t now = NowNs();
+  const double delay =
+      crackdown::DebugFrameDipSeconds(max_ms, double(now - start_ns) * 1e-9, unit(random), unit(random));
+  if (delay > 0.0) {
+    WaitUntil(now + int64_t(delay * 1e9));
+  }
+}
+
 // Picks this frame's step; host-paced rates first wait for their release time, 30 and 60 measure the real
 // interval since they are already paced by the guest vblank.
 void BeginFrame(int rate) {
+  DebugFrameDip();
   const int64_t now = NowNs();
   if (crackdown::HostPacedFrameRate(rate)) {
     const crackdown::FramePacer::Frame frame = g_pacer.Next(rate, now);
     WaitUntil(frame.release_ns);
     g_step = frame.step;
-    g_frame_ms_fraction += g_step.seconds * 1000.0;
-    g_frame_ms.store(crackdown::TakeWhole(g_frame_ms_fraction), std::memory_order_relaxed);
   } else {
     const double interval = g_console_last_ns ? double(now - g_console_last_ns) * 1e-9 : 0.0;
     g_console_last_ns = now;
     g_step = ConsolePacedStep(rate, interval);
   }
+  g_frame_ms_fraction += g_step.seconds * 1000.0;
+  g_frame_ms.store(crackdown::TakeFrameMs(g_frame_ms_fraction), std::memory_order_relaxed);
   g_step_bits.store(std::bit_cast<uint32_t>(g_step.seconds_f), std::memory_order_relaxed);
   g_original_steps.store(g_step.original_steps, std::memory_order_relaxed);
 }
@@ -211,6 +248,7 @@ REX_HOOK_RAW(sub_826A7698) {
     SelectVariableStep(base, rate);
   }
   crackdown::UpdateButtonGlyphs(base);
+  crackdown::NoteGuestFrame();
   __imp__sub_826A7698(ctx, base);
 }
 
@@ -236,6 +274,17 @@ REX_HOOK_RAW(sub_82324938) {
   __imp__sub_82324938(ctx, base);
   if (active) {
     SyncLogicalTick(base, timing, LoadBE32(base, timing + kLogicalTickOffset) - before);
+  }
+}
+
+// The title's frame timer (slot 0x2C of the timing object's vtable 0x82095D5C) keeps the fixed step's 30 or 33 ms
+// minimum frame, so with the fixed step off a shorter frame is published as 0 ms. The camera divides by its time step
+// (sub_8228BAB8), and a ragdoll on a 0 ms frame turned the camera, the player and the audio listener NaN. With the
+// fixed step off the published frame is the port's own frame time, never 0; at 30 the sites use the fixed 33 ms.
+REX_HOOK_RAW(sub_823263D8) {
+  __imp__sub_823263D8(ctx, base);
+  if (HighFrameRate(FrameRate()) && *GuestByte(base, kMeasuredFrameValidAddress)) {
+    StoreBE32(base, kMeasuredFrameMsAddress, g_frame_ms.load(std::memory_order_relaxed));
   }
 }
 
@@ -272,6 +321,17 @@ void crackdown_variable_step_frame_ms(PPCRegister& frame_ms) {
   if (crackdown::HostPacedFrameRate(FrameRate())) {
     frame_ms.u64 = g_frame_ms.load(std::memory_order_relaxed);
   }
+}
+
+// Codegen midasm hooks after the loads of per-update constants that ignore the frame time: the 1/30 at 0x820ED7CC by
+// `lfs f0` at 823308DC in sub_82330888 (crowd animation time += rate * step), and the 0.033 at 0x82CFF2B4 by
+// `lfs f13` at 823FF534 in sub_823FF3B8 (a cosmetic timer).
+void crackdown_crowd_anim_step(PPCRegister& step) {
+  step.f64 = double(crackdown::ScalePerOriginalStep(float(step.f64), g_original_steps.load(std::memory_order_relaxed)));
+}
+
+void crackdown_cosmetic_timer_step(PPCRegister& step) {
+  step.f64 = double(crackdown::ScalePerOriginalStep(float(step.f64), g_original_steps.load(std::memory_order_relaxed)));
 }
 
 double crackdown::OriginalStepsPerUpdate() {

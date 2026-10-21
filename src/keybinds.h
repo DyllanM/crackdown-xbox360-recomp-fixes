@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include <imgui.h>
+#include <rex/ui/virtual_key.h>
 
 #include "trg/settings.h"
 
@@ -296,6 +297,48 @@ inline void ResetKeyboardDefaults(trg::SettingsStore& settings) {
 inline void ResetKeyboardAndMouseDefaults(trg::SettingsStore& settings) {
   ResetKeyboardDefaults(settings);
   settings.Set("mnk_sensitivity", std::to_string(mouse_look::kDefaultSensitivity));
+}
+
+struct KeyModifiers {
+  bool shift = false;
+  bool ctrl = false;
+  bool alt = false;
+};
+
+// The MnK driver's rule: a token fires only when its modifier prefixes equal the held modifiers exactly.
+template <typename Parse>
+bool BindingHasKey(std::string_view binding, rex::ui::VirtualKey key, KeyModifiers held, Parse parse) {
+  while (!binding.empty()) {
+    const size_t comma = binding.find(',');
+    std::string_view token = keybind_detail::Trim(binding.substr(0, comma));
+    binding = comma == std::string_view::npos ? std::string_view() : binding.substr(comma + 1);
+    KeyModifiers wanted;
+    for (size_t plus = token.find('+'); plus != std::string_view::npos && plus != 0; plus = token.find('+')) {
+      const std::string_view head = token.substr(0, plus);
+      if (head == "Shift") {
+        wanted.shift = true;
+      } else if (head == "Ctrl" || head == "Control") {
+        wanted.ctrl = true;
+      } else if (head == "Alt") {
+        wanted.alt = true;
+      } else {
+        break;
+      }
+      token.remove_prefix(plus + 1);
+    }
+    if (wanted.shift == held.shift && wanted.ctrl == held.ctrl && wanted.alt == held.alt && !token.empty() &&
+        parse(token) == key) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Escape, or a key bound to the pad's Start or Back: the player is heading for a menu, not playing.
+template <typename Value, typename Parse>
+bool IsMenuIntentKey(rex::ui::VirtualKey key, KeyModifiers held, Value binding_of, Parse parse) {
+  return key == rex::ui::VirtualKey::kEscape || BindingHasKey(binding_of("keybind_start"), key, held, parse) ||
+         BindingHasKey(binding_of("keybind_back"), key, held, parse);
 }
 
 }  // namespace crackdown

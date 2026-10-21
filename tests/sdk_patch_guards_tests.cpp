@@ -1,4 +1,6 @@
 #include <filesystem>
+#include <regex>
+#include <set>
 #include <string>
 
 #include "check.h"
@@ -183,9 +185,7 @@ void TestMainMenuQuitHookIsWired() {
   CHECK(overrides.find("name = \"crackdown_main_menu_quit_enable\"", hook) != std::string::npos);
   CHECK(overrides.find("registers = [\"r4\", \"r11\", \"r31\"]", hook) != std::string::npos);
   CHECK(overrides.find("after_instruction = true", hook) != std::string::npos);
-  const size_t complete = overrides.find("address = 0x826783C0");
-  CHECK(complete != std::string::npos);
-  CHECK(overrides.find("name = \"crackdown_main_menu_quit_setup_complete\"", complete) != std::string::npos);
+  CHECK(overrides.find("address = 0x826783C0") == std::string::npos);
   const size_t popup = overrides.find("address = 0x82678778");
   CHECK(popup != std::string::npos);
   CHECK(overrides.find("name = \"crackdown_main_menu_quit_popup_state\"", popup) != std::string::npos);
@@ -218,8 +218,8 @@ void TestMainMenuQuitUsesWindowCloseExit() {
   CHECK(app.find("SetQuitHandler([this] { RequestHardExitFromUIThread(); })") != std::string::npos);
   CHECK(app.find("std::_Exit(0);") != std::string::npos);
   const std::string quit = check::ReadText(root / "src/main_menu_quit.cpp");
-  CHECK(quit.find("DEBUG_SAULO main-menu quit: hard exit deferred") != std::string::npos);
-  CHECK(quit.find("DEBUG_SAULO main-menu quit: using window-close exit path") != std::string::npos);
+  CHECK(quit.find("DEBUG_SAULO") == std::string::npos);
+  CHECK(quit.find("InvokeQuitHandler();") != std::string::npos);
   CHECK(quit.find("QuitFromUIThread") == std::string::npos);
 }
 
@@ -276,6 +276,136 @@ void TestInvalidFetchPatchOnlyReplacesTheWarning() {
   CHECK(HasLine(patch, "       return;"));
 }
 
+
+struct MidasmHook {
+  const char* address;
+  const char* name;
+  const char* registers;
+  bool after;
+};
+
+// The block of one [[midasm_hook]] entry, from its address line to the next entry.
+std::string HookBlock(const std::string& overrides, const std::string& address) {
+  const std::string line = "address = " + address;
+  size_t at = 0;
+  while ((at = overrides.find(line, at)) != std::string::npos) {
+    const size_t next = at + line.size();
+    if (next == overrides.size() || overrides[next] == '\n' || overrides[next] == '\r') break;
+    at = next;
+  }
+  if (at == std::string::npos) return {};
+  const size_t end = overrides.find("[[midasm_hook]]", at);
+  return overrides.substr(at, end == std::string::npos ? std::string::npos : end - at);
+}
+
+void TestHighFrameRateHooksAreWired() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string overrides = check::ReadText(root / "config/overrides.toml");
+  const std::string fixes = check::ReadText(root / "src/character_step_fixes.cpp");
+  const std::string pacing = check::ReadText(root / "src/frame_pacing.cpp");
+  const MidasmHook hooks[] = {
+      {"0x822A2DB8", "crackdown_ground_snap_decay", "[\"f13\"]", false},
+      {"0x822A2E28", "crackdown_ground_snap_lerp", "[\"f13\"]", true},
+      {"0x822AA8F4", "crackdown_first_gravity_step", "[\"f0\", \"f13\"]", true},
+      {"0x822E191C", "crackdown_hit_merge_window", "[\"r11\"]", true},
+      {"0x822BA48C", "crackdown_ragdoll_tick_window", "[\"r10\"]", true},
+      {"0x823672B0", "crackdown_projectile_probe_dt", "[\"r1\"]", false},
+      {"0x823308DC", "crackdown_crowd_anim_step", "[\"f0\"]", true},
+      {"0x823FF534", "crackdown_cosmetic_timer_step", "[\"f13\"]", true},
+  };
+  for (const MidasmHook& hook : hooks) {
+    const std::string block = HookBlock(overrides, hook.address);
+    CHECK(!block.empty());
+    CHECK(block.find(std::string("name = \"") + hook.name + "\"") != std::string::npos);
+    CHECK(block.find(std::string("registers = ") + hook.registers) != std::string::npos);
+    CHECK(block.find(hook.after ? "after_instruction = true" : "after_instruction = false") != std::string::npos);
+    const std::string definition = std::string("void ") + hook.name + "(";
+    CHECK(fixes.find(definition) != std::string::npos || pacing.find(definition) != std::string::npos);
+  }
+}
+
+// One intentional hook per guest address: codegen would emit two calls at a repeated midasm address.
+void TestMidasmAddressesAreUnique() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string overrides = check::ReadText(root / "config/overrides.toml");
+  const std::regex address(R"(\naddress = (0x[0-9A-Fa-f]+))");
+  std::set<std::string> seen;
+  size_t count = 0;
+  for (auto it = std::sregex_iterator(overrides.begin(), overrides.end(), address); it != std::sregex_iterator();
+       ++it) {
+    ++count;
+    CHECK(seen.insert((*it)[1].str()).second);
+  }
+  CHECK(count == seen.size() && count >= 38);
+}
+
+// A guest function has at most one REX_HOOK_RAW replacement in the project.
+void TestRawHooksAreUnique() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::regex hook(R"(REX_HOOK_RAW\((sub_[0-9A-Fa-f]+)\))");
+  std::set<std::string> seen;
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(root / "src")) {
+    const std::string ext = entry.path().extension().string();
+    if (ext != ".cpp" && ext != ".h") continue;
+    const std::string text = check::ReadText(entry.path());
+    for (auto it = std::sregex_iterator(text.begin(), text.end(), hook); it != std::sregex_iterator(); ++it) {
+      CHECK(seen.insert((*it)[1].str()).second);
+    }
+  }
+  CHECK(seen.count("sub_823263D8") == 1);
+  CHECK(seen.count("sub_82287130") == 1);
+}
+
+void TestFrameTimerNeverPublishesZero() {
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  const std::string pacing = check::ReadText(root / "src/frame_pacing.cpp");
+  CHECK(pacing.find("REX_HOOK_RAW(sub_823263D8)") != std::string::npos);
+  CHECK(pacing.find("kMeasuredFrameMsAddress = 0x82D99128") != std::string::npos);
+  CHECK(pacing.find("crackdown::TakeFrameMs(g_frame_ms_fraction)") != std::string::npos);
+  CHECK(pacing.find("crackdown::TakeWhole(g_frame_ms_fraction)") == std::string::npos);
+}
+
+// Every vector multiply-add and dot product the codegen emits goes through the single-rounding helpers, and a build
+// without -mfma still runs on CPUs without FMA3.
+void TestVectorMultiplyAddIsFused() {
+  const std::string patch = ReadPatch("0095-");
+  CHECK(!patch.empty());
+  CHECK(patch.find("diff --git a/src/codegen/builders/vector.cpp") != std::string::npos);
+  CHECK(patch.find("diff --git a/resources/templates/codegen/pch_h.inja") != std::string::npos);
+  for (const char* helper : {"rex::ppc::simde_mm_vmaddfp(", "rex::ppc::simde_mm_vnmsubfp(",
+                             "rex::ppc::simde_mm_vmsum3fp(", "rex::ppc::simde_mm_vmsum4fp("}) {
+    CHECK(patch.find(std::string("+      \"\\tsimde_mm_store_ps({}.f32, ") + helper) != std::string::npos);
+  }
+  for (const char* helper : {"+inline simde__m128 simde_mm_vmaddfp(", "+inline simde__m128 simde_mm_vnmsubfp(",
+                             "+inline simde__m128 simde_mm_vmsum3fp(", "+inline simde__m128 simde_mm_vmsum4fp("}) {
+    CHECK(patch.find(helper) != std::string::npos);
+  }
+  CHECK(HasLine(patch, "-      \"\\tsimde_mm_store_ps({}.f32, simde_mm_add_ps(simde_mm_mul_ps(simde_mm_load_ps({}.f32), \""));
+  CHECK(HasLine(patch, "-      \"simde_mm_xor_ps(simde_mm_sub_ps(simde_mm_mul_ps(simde_mm_load_ps({}.f32), \""));
+  CHECK(HasLine(patch, "-      \"\\tsimde_mm_store_ps({}.f32, simde_mm_dp_ps(simde_mm_load_ps({}.f32), \""));
+  CHECK(HasLine(patch, "+inline const bool kHostHasFma = HostHasFma();"));
+  CHECK(HasLine(patch, "+    __asm__(\"vfmadd213ps %2, %1, %0\" : \"+x\"(a) : \"x\"(b), \"x\"(c));"));
+  CHECK(HasLine(patch, "+  return detail::EmulatedVmaddfp(a, b, c);"));
+  const std::filesystem::path root = std::filesystem::path(CRACKDOWN_PATCH_DIR) / "../..";
+  CHECK(check::ReadText(root / "cmake/rexglue_pregenerated.cmake").find("-mfma") == std::string::npos);
+  const std::filesystem::path source = root / "out/rexglue-sdk-src/src/codegen/builders/vector.cpp";
+  if (!std::filesystem::exists(source)) return;
+  const std::string text = check::ReadText(source);
+  if (text.find("rex::ppc::simde_mm_vmaddfp(") == std::string::npos) return;
+  CHECK(text.find("simde_mm_dp_ps(") == std::string::npos);
+  CHECK(text.find("simde_mm_add_ps(simde_mm_mul_ps(simde_mm_load_ps({}.f32)") == std::string::npos);
+}
+
+void TestXmaStallGuards() {
+  const std::string patch = ReadPatch("0096-");
+  CHECK(!patch.empty());
+  CHECK(patch.find("diff --git a/src/audio/xma_context.cpp") != std::string::npos);
+  CHECK(HasLine(patch, "+        current_frame_remaining_subframes_ == 0) {"));
+  CHECK(HasLine(patch, "+    data.output_buffer_write_offset = data.output_buffer_read_offset;"));
+  CHECK(HasLine(patch, "+  if (remaining_subframe_blocks_in_output_buffer_ == 0 && output_rb.empty()) {"));
+  CHECK(HasLine(patch, "-  if (output_rb.empty()) {"));
+}
+
 }  // namespace
 
 int main() {
@@ -298,5 +428,11 @@ int main() {
   TestMouseLookHooksAreWired();
   TestMouseLookPatchSuppressesStick();
   TestInvalidFetchPatchOnlyReplacesTheWarning();
+  TestHighFrameRateHooksAreWired();
+  TestMidasmAddressesAreUnique();
+  TestRawHooksAreUnique();
+  TestFrameTimerNeverPublishesZero();
+  TestVectorMultiplyAddIsFused();
+  TestXmaStallGuards();
   return check::Finish("sdk_patch_guards_tests");
 }

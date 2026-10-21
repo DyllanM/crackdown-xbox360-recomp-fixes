@@ -331,7 +331,51 @@ void TestHotkeySeparation() {
 
 }  // namespace
 
+using rex::ui::VirtualKey;
+
+VirtualKey ParseTestKey(std::string_view name) {
+  static const std::map<std::string_view, VirtualKey> kKeys = {
+      {"X", VirtualKey::kX},     {"Z", VirtualKey::kZ},   {"P", VirtualKey::kP},
+      {"Tab", VirtualKey::kTab}, {"Up", VirtualKey::kUp}, {"Return", VirtualKey::kReturn}};
+  const auto found = kKeys.find(name);
+  return found == kKeys.end() ? VirtualKey::kNone : found->second;
+}
+
+bool ReleasesCapture(VirtualKey key, const std::map<std::string, std::string>& binds, KeyModifiers held = {}) {
+  return IsMenuIntentKey(
+      key, held, [&](std::string_view name) { return binds.at(std::string(name)); }, ParseTestKey);
+}
+
+// Capture follows the Start and Back bindings, not fixed physical keys.
+void TestMenuIntentFollowsBindings() {
+  const std::map<std::string, std::string> defaults = {{"keybind_start", Find("keybind_start")->default_binding},
+                                                       {"keybind_back", Find("keybind_back")->default_binding}};
+  for (const VirtualKey key : {VirtualKey::kEscape, VirtualKey::kX, VirtualKey::kReturn, VirtualKey::kZ,
+                               VirtualKey::kTab}) {
+    CHECK(ReleasesCapture(key, defaults));
+  }
+  CHECK(!ReleasesCapture(VirtualKey::kP, defaults));
+  CHECK(!ReleasesCapture(VirtualKey::kX, defaults, {.shift = true}));
+
+  const std::map<std::string, std::string> remapped = {{"keybind_start", "P"}, {"keybind_back", "Shift+Up"}};
+  CHECK(!ReleasesCapture(VirtualKey::kX, remapped));
+  CHECK(!ReleasesCapture(VirtualKey::kZ, remapped));
+  CHECK(ReleasesCapture(VirtualKey::kP, remapped));
+  CHECK(ReleasesCapture(VirtualKey::kUp, remapped, {.shift = true}));
+  CHECK(!ReleasesCapture(VirtualKey::kUp, remapped));
+  CHECK(ReleasesCapture(VirtualKey::kEscape, remapped));
+
+  const std::map<std::string, std::string> unbound = {{"keybind_start", ""}, {"keybind_back", ""}};
+  CHECK(ReleasesCapture(VirtualKey::kEscape, unbound));
+  CHECK(!ReleasesCapture(VirtualKey::kX, unbound));
+
+  const std::string host = ReadSource("window_host.cpp");
+  CHECK(Has(host, "crackdown::IsMenuIntentKey("));
+  CHECK(!Has(host, "case rex::ui::VirtualKey::kX:"));
+}
+
 int main() {
+  TestMenuIntentFollowsBindings();
   TestTable();
   TestMapping();
   TestCapture();

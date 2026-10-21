@@ -484,7 +484,8 @@ void CheckWindowDisplay(void* native_window, int monitor) {
   if (!hwnd || expected.width == 0) {
     return;
   }
-  MONITORINFO actual{sizeof(actual)};
+  MONITORINFO actual{};
+  actual.cbSize = sizeof(actual);
   if (!GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &actual)) {
     return;
   }

@@ -17,7 +17,9 @@ namespace {
 
 constexpr const char* kReleasesUrl =
     "https://api.github.com/repos/saulob/crackdown-xbox360-recompiled/releases/latest";
+constexpr const char* kDownloadUrlPrefix = "https://github.com/saulob/crackdown-xbox360-recompiled/releases/download/";
 
+#if defined(CRACKDOWN_UPDATE_TEST_OVERRIDES)
 std::optional<std::string> Environment(const char* name) {
 #if defined(_WIN32)
   char* value = nullptr;
@@ -51,6 +53,7 @@ std::optional<std::string> TestVariable(const char* name) {
   }
   return Environment(name);
 }
+#endif
 
 std::vector<std::string> RestartArguments() {
   std::vector<std::string> arguments = trg::update::CurrentProcessArguments();
@@ -72,6 +75,7 @@ trg::update::UpdateConfig MakeUpdateConfig(const std::filesystem::path& install_
   trg::update::UpdateConfig config;
   config.current_version = CRACKDOWN_PORT_VERSION;
   config.releases_url = kReleasesUrl;
+  config.download_url_prefix = kDownloadUrlPrefix;
   config.user_agent = std::string("Crackdown-Updater/") + CRACKDOWN_PORT_VERSION;
   config.install_dir = install_dir;
   config.restart_arguments = RestartArguments();
@@ -111,6 +115,7 @@ trg::update::UpdateConfig MakeUpdateConfig(const std::filesystem::path& install_
 
   config.log = [](std::string_view text) { REXLOG_INFO("Updater: {}", text); };
 
+#if defined(CRACKDOWN_UPDATE_TEST_OVERRIDES)
   if (const std::optional<std::string> version = TestVariable("CD_UPDATE_TEST_CURRENT_VERSION"); version) {
     config.current_version = *version;
     REXLOG_WARN("Updater test mode: reporting version {}", config.current_version);
@@ -121,6 +126,7 @@ trg::update::UpdateConfig MakeUpdateConfig(const std::filesystem::path& install_
   if (const std::optional<std::string> hash = TestVariable("CD_UPDATE_TEST_ASSET_SHA256"); hash) {
     config.sha256_override = *hash;
   }
+#endif
   return config;
 }
 

@@ -137,9 +137,76 @@ constexpr uint32_t TakeWhole(double& total) {
   return whole;
 }
 
+// A per-update increment the title sized for its 1/30 s step, scaled to the update's length in those steps.
+constexpr float ScalePerOriginalStep(float per_step, double steps) {
+  return steps > 0.0 ? float(double(per_step) * steps) : per_step;
+}
+
+// A frame's whole milliseconds for the title's integer frame-time sites, never 0: the camera divides by its time step.
+// A frame shorter than a millisecond takes one and the next frames pay it back, so the total stays exact.
+inline constexpr double kMaxFrameMsDebt = 2.0;
+
+constexpr uint32_t TakeFrameMs(double& total_ms) {
+  if (total_ms < 1.0) {
+    total_ms = std::max(total_ms - 1.0, -kMaxFrameMsDebt);
+    return 1;
+  }
+  return TakeWhole(total_ms);
+}
+
+// Game time for host-paced frames that cannot keep their rate. The title's character controller turns a step that
+// jumps from one frame to the next into a launch on slopes, so the step follows a moving average of the real intervals
+// and the time owed to the game is paid back a fraction per frame. On a steady rate the step equals the interval. An
+// interval counts at most 1/30 s, so a stall slows the game instead of being owed back.
+class StepSmoother {
+ public:
+  void Reset(double seconds) {
+    average_ = seconds;
+    owed_ = 0.0;
+  }
+
+  double Take(double interval) {
+    const double counted = std::clamp(interval, kMinMeasuredFrameSeconds, kMaxMeasuredFrameSeconds);
+    owed_ += counted;
+    average_ += kAverageWeight * (counted - average_);
+    const double step =
+        std::clamp(average_ + kPaybackWeight * (owed_ - average_), kMinMeasuredFrameSeconds, kMaxMeasuredFrameSeconds);
+    owed_ = std::clamp(owed_ - step, -kMaxMeasuredFrameSeconds, kMaxMeasuredFrameSeconds);
+    return step;
+  }
+
+  double owed() const { return owed_; }
+
+ private:
+  static constexpr double kAverageWeight = 0.25;
+  static constexpr double kPaybackWeight = 0.25;
+  double average_ = 1.0 / kDefaultFrameRate;
+  double owed_ = 0.0;
+};
+
+// crackdown_debug_frame_dips: the extra delay before a frame, as if the GPU could not keep up. The load sweeps from
+// none to full and back every kDipPeriodSeconds, each frame takes 60-100% of it (jitter in [0, 1)), and a spike below
+// kDipSpikeChance stalls for twice the maximum.
+inline constexpr double kDipPeriodSeconds = 6.0;
+inline constexpr double kDipSpikeChance = 0.01;
+inline constexpr int kMaxDebugDipMs = 100;
+
+inline double DebugFrameDipSeconds(int max_ms, double seconds, double jitter, double spike) {
+  if (max_ms <= 0) {
+    return 0.0;
+  }
+  const double max = std::min(max_ms, kMaxDebugDipMs) * 1e-3;
+  if (spike < kDipSpikeChance) {
+    return 2.0 * max;
+  }
+  constexpr double kTwoPi = 6.283185307179586;
+  const double load = 0.5 - 0.5 * std::cos(kTwoPi * seconds / kDipPeriodSeconds);
+  return max * load * (0.6 + 0.4 * jitter);
+}
+
 // Host pacing for HostPacedFrameRate rates. A fixed rate releases frames on a grid of its period, so sleep overshoot
-// never accumulates, and steps exactly one period per frame; a frame later than a whole period restarts the grid and
-// steps the time it really took. Unlimited never waits and steps the measured time.
+// never accumulates, and an on-time frame steps exactly one period. A frame that starts after its slot restarts the
+// grid at once, and its step comes from StepSmoother. Unlimited never waits and steps through StepSmoother too.
 class FramePacer {
  public:
   struct Frame {
@@ -152,12 +219,14 @@ class FramePacer {
       rate_ = rate;
       started_ = true;
       Restart(now_ns);
-      return {now_ns, rate == kFrameRateUnlimited ? FixedFrameStep(kGuestVblankRate) : FixedFrameStep(rate)};
+      const FrameStep first = rate == kFrameRateUnlimited ? FixedFrameStep(kGuestVblankRate) : FixedFrameStep(rate);
+      smoother_.Reset(first.seconds);
+      return {now_ns, first};
     }
     if (rate == kFrameRateUnlimited) {
       const int64_t elapsed = now_ns - last_ns_;
       last_ns_ = now_ns;
-      return {now_ns, MeasuredFrameStep(double(elapsed) * 1e-9)};
+      return {now_ns, StepFromSeconds(smoother_.Take(double(elapsed) * 1e-9))};
     }
     if (++index_ == rate) {
       // A whole second of periods is exactly 1e9 ns, so the grid moves on without rounding.
@@ -165,13 +234,16 @@ class FramePacer {
       index_ = 0;
     }
     const int64_t deadline = base_ns_ + index_ * kNsPerSecond / rate;
-    if (now_ns > deadline + kNsPerSecond / rate) {
+    if (now_ns > deadline) {
       const int64_t elapsed = now_ns - last_ns_;
       Restart(now_ns);
-      return {now_ns, MeasuredFrameStep(double(elapsed) * 1e-9)};
+      return {now_ns, StepFromSeconds(smoother_.Take(double(elapsed) * 1e-9))};
     }
     last_ns_ = deadline;
-    return {deadline, FixedFrameStep(rate)};
+    const FrameStep fixed = FixedFrameStep(rate);
+    const double step = smoother_.Take(fixed.seconds);
+    // Exactly one period, with FixedFrameStep's exact original_steps, once nothing is owed.
+    return {deadline, step == fixed.seconds ? fixed : StepFromSeconds(step)};
   }
 
  private:
@@ -188,6 +260,7 @@ class FramePacer {
   int64_t base_ns_ = 0;
   int64_t last_ns_ = 0;
   int64_t index_ = 0;
+  StepSmoother smoother_;
 };
 
 }  // namespace crackdown

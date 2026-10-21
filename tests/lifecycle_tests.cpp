@@ -51,7 +51,8 @@ void TestWindowCloseHardExits() {
   std::printf("window close terminates no resident teardown and hard-exits\n");
   const std::string app = ReadSource("crackdown_app.h");
   CHECK(Has(app, "void OnClosing(rex::ui::UIEvent& e) override"));
-  const std::string body = FunctionBody(app, "void OnClosing(");
+  CHECK(Has(FunctionBody(app, "void OnClosing("), "HardExitFromUIThread();"));
+  const std::string body = FunctionBody(app, "void HardExitFromUIThread(");
   CHECK(Has(body, "crackdown::FinalizeSessionLog();"));
   CHECK(Has(body, "rex::FlushLogging();"));
   CHECK(Has(body, "std::_Exit(0);"));

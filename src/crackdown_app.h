@@ -32,6 +32,7 @@
 #include "game_files.h"
 #include "glyph_overlay.h"
 #include "guest_fault_log.h"
+#include "hang_watchdog.h"
 #include "internal_render_scale.h"
 #include "language_setting.h"
 #include "launcher.h"
@@ -160,7 +161,7 @@ class CrackdownApp : public rex::ReXApp {
                              crackdown::PlayerSettingsPath(defaults.user_data_root), LogsDir(defaults.user_data_root),
                              user_data_.outcome},
                             game_settings_, {nullptr, immediate_drawer(), nullptr},
-                            MakeLauncherCallbacks([this, resume, defaults] { resume(defaults); }));
+                            MakeLauncherCallbacks([resume, defaults] { resume(defaults); }));
     return std::nullopt;
   }
 
@@ -235,6 +236,7 @@ class CrackdownApp : public rex::ReXApp {
       SetCursorOverlayOpen(launcher_open_);
       crackdown::AttachFrameRate(window(), app_context());
       crackdown::CheckWindowDisplay(window()->GetNativeWindowHandle(), REXCVAR_GET(monitor));
+      crackdown::StartHangWatchdog(window()->GetNativeWindowHandle(), LogsDir(user_data_root()));
       crackdown::mouse_look::Install(window());
     }
     crackdown::mouse_look::Configure();

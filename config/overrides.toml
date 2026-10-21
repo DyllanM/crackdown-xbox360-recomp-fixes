@@ -53,13 +53,35 @@ name = "crackdown_look_target_guard"
 registers = ["r31"]
 after_instruction = false
 
-# The ledge and slope follower divides its snap-down pull by the step's dt; scale it so it is divided by the title's
-# original 1/30 s step instead.
+# The ledge and slope follower divides its snap-down pull by the step's dt; above 30 FPS scale it so it is divided by
+# the title's original 1/30 s step instead.
 [[midasm_hook]]
 address = 0x822B5634
 name = "crackdown_ledge_snap_down"
 registers = ["f0"]
 after_instruction = false
+
+# The character's vertical visual smoothing in sub_822A2C90 decays its blend (f13, before `fmuls f0,f0,f13`) and closes
+# a fraction of the gap (f13, after `fmuls f13,f13,f0`) once per step; both become per 1/30 s step.
+[[midasm_hook]]
+address = 0x822A2DB8
+name = "crackdown_ground_snap_decay"
+registers = ["f13"]
+after_instruction = false
+
+[[midasm_hook]]
+address = 0x822A2E28
+name = "crackdown_ground_snap_lerp"
+registers = ["f13"]
+after_instruction = true
+
+# The first gravity increment after a grounded step (f13 = accumulator +532 == 0) is the 30 FPS one (f0 = gravity * dt
+# after the multiply).
+[[midasm_hook]]
+address = 0x822AA8F4
+name = "crackdown_first_gravity_step"
+registers = ["f0", "f13"]
+after_instruction = true
 
 # A ragdoll started again on an already-ragdolled character differences a stale pose pair over the 30 FPS step instead
 # of one short step (f1 = dt, r29 = character).
@@ -68,6 +90,41 @@ address = 0x822BA2E8
 name = "crackdown_ragdoll_pose_dt"
 registers = ["f1", "r29"]
 after_instruction = false
+
+# Windows counted in frame-counter ticks keep their 30 FPS length: the hit-reaction merge window (r11 = counter + 10)
+# and a ragdoll threshold (r10 = counter + 15).
+[[midasm_hook]]
+address = 0x822E191C
+name = "crackdown_hit_merge_window"
+registers = ["r11"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x822BA48C
+name = "crackdown_ragdoll_tick_window"
+registers = ["r10"]
+after_instruction = true
+
+# Projectiles detect impacts only with a ray of launch velocity * dt (the float at r1+476); it keeps its 30 FPS length.
+[[midasm_hook]]
+address = 0x823672B0
+name = "crackdown_projectile_probe_dt"
+registers = ["r1"]
+after_instruction = false
+
+# Per-update constants that ignore the frame time: the crowd animation clock's 1/30 (f0) and a cosmetic timer's 0.033
+# (f13) are scaled to the update's length.
+[[midasm_hook]]
+address = 0x823308DC
+name = "crackdown_crowd_anim_step"
+registers = ["f0"]
+after_instruction = true
+
+[[midasm_hook]]
+address = 0x823FF534
+name = "crackdown_cosmetic_timer_step"
+registers = ["f13"]
+after_instruction = true
 
 # The camera's above-water push divides the depth by its forward axis's y (f13); a level camera made it infinite.
 [[midasm_hook]]
@@ -204,12 +261,6 @@ jump_address = 0x826783B8
 address = 0x826783B8
 name = "crackdown_main_menu_quit_enable"
 registers = ["r4", "r11", "r31"]
-after_instruction = true
-
-[[midasm_hook]]
-address = 0x826783C0
-name = "crackdown_main_menu_quit_setup_complete"
-registers = []
 after_instruction = true
 
 # The native popup's shared class uses this state to choose its action. State 2 gives the Quit title and

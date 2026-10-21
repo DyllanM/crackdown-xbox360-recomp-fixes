@@ -214,7 +214,10 @@ void Configure() {
   }
 }
 
+std::mutex g_capture_mutex;
+
 void SetCaptured(bool captured) {
+  std::lock_guard capture_lock(g_capture_mutex);
   if (captured) {
     if (!CanAcquireCapture(DirectEnabled(), g_focused.load(std::memory_order_relaxed),
                            g_blocked.load(std::memory_order_relaxed))) {

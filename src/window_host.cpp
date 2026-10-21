@@ -12,6 +12,7 @@
 #include <rex/input/mnk/mnk_input_driver.h>
 #include <rex/logging.h>
 #include <rex/ui/imgui_dialog.h>
+#include <rex/ui/keybinds.h>
 #include <rex/ui/ui_event.h>
 #include <rex/ui/virtual_key.h>
 #include <rex/ui/window.h>
@@ -20,6 +21,7 @@
 
 #include "cursor_hider.h"
 #include "input_activity.h"
+#include "keybinds.h"
 #include "mouse_look.h"
 
 #if defined(_WIN32)
@@ -40,17 +42,9 @@ bool IsF11PhysicallyDown() {
 #endif
 }
 
-bool IsMenuKey(rex::ui::VirtualKey key) {
-  switch (key) {
-    case rex::ui::VirtualKey::kEscape:
-    case rex::ui::VirtualKey::kReturn:
-    case rex::ui::VirtualKey::kX:
-    case rex::ui::VirtualKey::kZ:
-    case rex::ui::VirtualKey::kTab:
-      return true;
-    default:
-      return false;
-  }
+bool IsMenuKey(const rex::ui::KeyEvent& e) {
+  return crackdown::IsMenuIntentKey(e.virtual_key(), {e.is_shift_pressed(), e.is_ctrl_pressed(), e.is_alt_pressed()},
+                                    rex::cvar::GetFlagByName, rex::ui::ParseVirtualKey);
 }
 
 bool IsGameplayKey(const rex::ui::KeyEvent& e) {
@@ -86,7 +80,8 @@ bool IsDecorated(HWND hwnd) {
 // Centers a window of the given outer size on the work area of the monitor it is on now (supports a monitor at
 // negative coordinates, since it only ever adds a non-negative offset to work.left/top).
 RECT CenterOnCurrentMonitor(HWND hwnd, int width, int height) {
-  MONITORINFO monitor{sizeof(monitor)};
+  MONITORINFO monitor{};
+  monitor.cbSize = sizeof(monitor);
   GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitor);
   const RECT& work = monitor.rcWork;
   width = (std::min)(width, int(work.right - work.left));
@@ -172,7 +167,7 @@ class WindowHost final : public rex::ui::WindowInputListener, public rex::ui::Wi
     if (e.target() != window_) {
       return;
     }
-    if (IsMenuKey(e.virtual_key())) {
+    if (IsMenuKey(e)) {
       crackdown::mouse_look::ReleaseCapture();
     }
     if (e.virtual_key() == rex::ui::VirtualKey::kF11) {

@@ -28,11 +28,14 @@ Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, wit
 - **Graphics card selection** (Windows): Automatic (recommended) or a specific compatible GPU.
 
 ### Graphics fixes
+- **Modern button prompts**: the HUD's old Xbox 360 button glyphs are replaced by sharp modern ones, and the HUD text is
+  redrawn from the system's Arial (the game's own typeface) at twice the original atlas resolution. With keyboard and
+  mouse in use, prompts show your bound keys and switch back to the controller glyphs as soon as a pad is used.
 - **Corrected exposure and brightness**: scenes where the exposure stayed stale or wrong now adapt properly, without the frame rate cost of a full readback.
 
 ### Performance
 - **Frame rates**: 30 (Original), 60 (Recommended, the default), 90, 120, 144, 165, 240 and **Unlimited**. Game speed stays the same at every rate.
-- **Missed frames no longer slow the game down**: at 30 and 60 FPS the game catches up, so game time keeps its normal speed when the PC misses a frame. 90 FPS and higher, including Unlimited, are paced by the host for even frame delivery.
+- **Missed frames no longer slow the game down**: at 30 and 60 FPS the game catches up, so game time keeps its normal speed when the PC misses a frame. 90 FPS and higher, including Unlimited, are paced by the host for even frame delivery; when the PC cannot hold the selected rate, the game steps by a smoothed measure of the real frame time, so a frame rate dip keeps the game at normal speed without upsetting its physics.
 - **Lower CPU overhead and better scaling at high frame rates**, with improved performance in demanding city scenes and better use of modern CPUs.
 - **Faster graphics command processing**, with less repeated GPU state work, fewer redundant memory uploads, and less render-target and texture-sampler work per draw.
 - **Direct3D 12 submission on its own thread** (Windows): graphics submission runs independently of the main GPU command processor thread. On CPUs with eight or more logical processors, the heavy graphics host threads are also scheduled away from the first two.
@@ -44,13 +47,17 @@ Crackdown Recompiled is a native PC recompilation of Crackdown for Xbox 360, wit
 - **Offline achievements** with the original icons and Gamerscore: an **Achievements** page in the launcher and an in-game overlay on **F7**, usable with keyboard or controller.
 - **Cheats**: 7 optional cheats set on the launcher's **Cheats** page, and changed for the session with the in-game menu on **F10**.
 - **Save-load fix**: the crash that could happen after Loading Saved Game is fixed.
+- **High frame rate fixes**: above 30 FPS, no more launches on slopes or off ledges, no speed build-up running down
+  stairs and slopes, fewer characters stuck in walls, rockets and grenade rounds explode on impact again, and the
+  explosion and ragdoll crash in the camera and audio engine is fixed.
+- **Xbox 360 vector math**: multiply-adds and dot products round once, as on the console.
 - **Language selector** with ten launcher choices: English, French, German, Italian, Spanish (Spain), Spanish (Latin America), Czech, Polish, Hungarian and Japanese.
 - **Skip intro**: starts directly at the title screen.
 - **Frame rate and render resolution in the window title**, and an **FPS counter** in the corner (toggled with **F2**).
 - **Full launcher** with an installer for your disc image or extracted files, and display, graphics and gameplay options. Author and project links open in the browser.
 - **Keyboard and mouse support** with mouse aiming, menu navigation and configurable mouse sensitivity, while Xbox controllers continue to work normally.
 - Portable `user_data` folder for saves, settings and caches.
-- **Diagnostics**: optional detailed logging, an **Open logs folder** button, and on Windows a crash appends a `CRASH REPORT` block to the same session log (no separate crash file or minidump).
+- **Diagnostics**: optional detailed logging, an **Open logs folder** button, and on Windows a crash appends a `CRASH REPORT` block to the same session log (no separate crash file or minidump), and a freeze writes every thread's call stack to `hang_<n>.txt` in the logs folder.
 
 ### Platforms
 - **Windows** (primary): native build using Direct3D 12.
@@ -147,7 +154,7 @@ Optional gameplay modifiers, all off by default. They start with the values save
 - **Vehicle Speed**: Off, 2x, 4x or 6x
 
 ### Controls
-- Xbox controllers work without setup
+- Xbox and XInput controllers work without setup; any connected pad can press Start
 - **Keyboard and mouse**: enabled or disabled (off by default). **W A S D** move, the mouse turns the camera and aims, the **left mouse button** fires and the **right mouse button** locks on. It works together with any connected Xbox controller.
 - **Mouse sensitivity**: 0.10x to 10.00x (default 1.00x). The mouse turns the camera directly; it does not go through the right stick's deadzone or speed curve.
 - The complete key list is on the Controls page. Plain arrow keys also turn the camera, and menus use **W A S D** or **Shift + arrow** keys.

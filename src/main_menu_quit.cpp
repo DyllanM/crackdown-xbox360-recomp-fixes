@@ -10,7 +10,6 @@
 #include <utility>
 
 #include <rex/hook.h>
-#include <rex/logging.h>
 #include <rex/ppc.h>
 #include <rex/system/kernel_state.h>
 #include <rex/system/xmemory.h>
@@ -47,7 +46,6 @@ struct StringOverride {
 };
 
 std::atomic<bool> g_main_menu_active{false};
-std::atomic<bool> g_help_logged{false};
 std::mutex g_handler_mutex;
 std::function<void()> g_quit_handler;
 
@@ -105,9 +103,6 @@ void RestoreString(StringOverride& override, uint8_t* base) {
 void ApplyStringOverride(uint8_t* base, uint32_t id, uint32_t address) {
   if (id == kHelpId && g_main_menu_active.load(std::memory_order_acquire)) {
     OverrideString(g_help_override, base, address, u"Quit the game");
-    if (!g_help_logged.exchange(true, std::memory_order_acq_rel)) {
-      REXLOG_INFO("DEBUG_SAULO main-menu quit: help text overridden");
-    }
   } else if (g_native_confirmation.load(std::memory_order_acquire)) {
     if (id == kSaveAndQuitId) {
       OverrideString(g_save_and_quit_override, base, address, u"Quit Game");
@@ -151,7 +146,6 @@ bool BeginNativeConfirmation() {
   if (g_native_confirmation.exchange(true, std::memory_order_acq_rel)) {
     return false;
   }
-  REXLOG_INFO("DEBUG_SAULO main-menu quit: native confirmation opened");
   return true;
 }
 
@@ -171,9 +165,7 @@ void crackdown_main_menu_quit_use_handler() {
   crackdown::main_menu_quit::MarkMainMenuActive();
 }
 
-void crackdown_main_menu_quit_handler_attached() {
-  REXLOG_INFO("DEBUG_SAULO main-menu quit: handler attached");
-}
+void crackdown_main_menu_quit_handler_attached() {}
 
 void crackdown_main_menu_quit_enable(PPCRegister& enabled, PPCRegister& control, PPCRegister& self) {
   uint8_t* base = rex::system::kernel_state()->memory()->virtual_membase();
@@ -182,11 +174,6 @@ void crackdown_main_menu_quit_enable(PPCRegister& enabled, PPCRegister& control,
     control.u64 = quit;
   }
   enabled.u64 = 1;
-  REXLOG_INFO("DEBUG_SAULO main-menu quit: guest patch reached");
-}
-
-void crackdown_main_menu_quit_setup_complete() {
-  REXLOG_INFO("DEBUG_SAULO main-menu quit: quit setup completed");
 }
 
 void crackdown_main_menu_quit_popup_state(PPCRegister& state) {
@@ -206,12 +193,9 @@ REX_HOOK_RAW(sub_826587F8) {
     __imp__sub_826587F8(ctx, base);
     return;
   }
-  REXLOG_INFO("DEBUG_SAULO main-menu quit: native confirmation result=yes");
   crackdown::main_menu_quit::EndNativeConfirmation(base);
   __imp__sub_826587F8(ctx, base);
   crackdown::main_menu_quit::InvokeQuitHandler();
-  REXLOG_INFO("DEBUG_SAULO main-menu quit: hard exit deferred");
-  REXLOG_INFO("DEBUG_SAULO main-menu quit: using window-close exit path");
 }
 
 REX_HOOK_RAW(sub_826586B0) {
@@ -219,16 +203,12 @@ REX_HOOK_RAW(sub_826586B0) {
     __imp__sub_826586B0(ctx, base);
     return;
   }
-  REXLOG_INFO("DEBUG_SAULO main-menu quit: native confirmation result=no");
   crackdown::main_menu_quit::EndNativeConfirmation(base);
   __imp__sub_826586B0(ctx, base);
 }
 
 REX_HOOK_RAW(sub_82658560) {
   const bool pending = crackdown::main_menu_quit::NativeConfirmationActive();
-  if (pending) {
-    REXLOG_INFO("DEBUG_SAULO main-menu quit: native confirmation cancelled");
-  }
   __imp__sub_82658560(ctx, base);
   if (pending) {
     crackdown::main_menu_quit::EndNativeConfirmation(base);

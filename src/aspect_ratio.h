@@ -106,8 +106,8 @@ constexpr bool WindowMatchesAspect(WindowSize size, AspectRatio aspect) {
     return false;
   }
   const AspectRatioInfo& info = InfoFor(aspect);
-  const long long window = (long long)size.width * info.ratio_y;
-  const long long format = (long long)size.height * info.ratio_x;
+  const long long window = static_cast<long long>(size.width) * info.ratio_y;
+  const long long format = static_cast<long long>(size.height) * info.ratio_x;
   return std::llabs(window - format) * 100 <= format;
 }
 

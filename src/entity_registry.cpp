@@ -15,7 +15,7 @@ namespace {
 
 constexpr uint32_t kManagerGlobal = 0x82DE3F2C;
 constexpr uint32_t kObjectArrayOffset = 4;
-constexpr uint32_t kCapacity = 100;  // The manager's inline object array.
+constexpr uint32_t kCapacity = 308;  // The inline object array ends at the count field.
 constexpr uint32_t kCountOffset = 1236;
 constexpr uint32_t kSlotOffset = 256;
 constexpr uint32_t kNameChainOffset = 260;

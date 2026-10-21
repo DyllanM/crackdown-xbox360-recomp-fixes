@@ -5,9 +5,9 @@ result is installed over the stock files in `tools/rexglue`. The game compiles a
 must not move virtual functions or data members of classes the generated game code uses.
 
 `NNNN-name.patch` applies on both platforms, `NNNN-name.windows.patch` only on Windows and `NNNN-name.linux.patch` only on
-Linux. Numbers are unique and patches apply in name order; gaps are fine. 53 patches are common, 19 are Windows only and
-13 are Linux only, so 72 apply on Windows and 66 apply on Linux. Patches 0005 and 0052 change the code generator and are the
-reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
+Linux. Numbers are unique and patches apply in name order; gaps are fine. 55 patches are common, 19 are Windows only and
+13 are Linux only, so 74 apply on Windows and 68 apply on Linux. Patches 0005, 0052 and 0095 change the code generator and
+are the reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
 
 | # | Platform | Purpose |
 |---|----------|---------|
@@ -86,9 +86,11 @@ reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the run
 | 0092 | windows | Windows half of 0091 and 0093: full `D3D12_HEAP_PROPERTIES` initializers, a missing `override`, explicit `GetProcAddress` casts, an unused lambda capture and an unused local |
 | 0093 | all | unused locals removed where their initializer has no side effect; guest-memory reads, FidelityFX-only locals and the only use of a parameter keep their evaluation with `[[maybe_unused]]` |
 | 0094 | all | a passive input-activity callback reports each device's changed state from `InputSystem::GetState`; the cursor policy reads it without altering gamepad state, merging or device assignment |
+| 0095 | all | codegen: `vmaddfp`/`vnmsubfp` (and the 128 forms) round once like the hardware, and `vmsum3fp128`/`vmsum4fp128` sum in double and round once (Xenia's order) instead of `dpps`; with two roundings a unit length could round above 1.0. The helpers are emitted into the generated `crackdown_pch.h`: with `-mfma` or on ARM64 they use the native fused multiply-add, otherwise x64 checks the CPU once and uses `vfmadd213ps` on FMA3 hosts and the exact round-to-odd emulation elsewhere, with the same bits, so FMA3 is not required |
+| 0096 | all | XMA `Work()`: a partly delivered frame keeps draining after the input runs out, an input-starved context sets its output write offset to the read offset, and output is invalidated only when the ring is full, so voices no longer stall for good after a long host hitch |
 
-Patches 0054 to 0058 and 0078 to 0083 and the hooks in `src/audio_guest_sync.cpp` are adapted from Unowa001/crackdown-recomp
-(BSD 3-Clause, notice in [THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).
+Patches 0054 to 0058, 0078 to 0083, 0095 and 0096 and the hooks in `src/audio_guest_sync.cpp` are adapted from
+Unowa001/crackdown-recomp (BSD 3-Clause, notice in [THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).
 
 The AppImage runtime has its own pin and patch in `patches/appimage-runtime` (see [linux.md](linux.md)).
 
@@ -101,3 +103,16 @@ return (`crackdown_audio_barrier_escape`). The `crackdown_variable_step_frame_ms
 frame-time sites the host-paced frame time above 60 FPS. `crackdown_audio_wave_timeout_tick` at `0x8225B254` advances a
 wave's safety timeout at 30 Hz at any frame rate, so speech is not stopped early above 30 FPS.
 `crackdown_audio_pcm_firewall` sanitizes the mixed audio frame before it is submitted.
+
+The character hooks in `src/character_step_fixes.cpp` turn per-step terms the title tuned for 1/30 s into per-second ones
+above 30 FPS, and change nothing at 30: the ledge and slope snap-down pull (`0x822B5634`, shorter steps only), the
+vertical visual smoothing (`0x822A2DB8`, `0x822A2E28`), the first gravity increment after a grounded step (`0x822AA8F4`),
+the hit-reaction and ragdoll tick windows (`0x822E191C`, `0x822BA48C`), the pose step of a restarted ragdoll
+(`0x822BA2E8`) and the projectile impact ray (`0x823672B0`). `crackdown_crowd_anim_step` (`0x823308DC`) and
+`crackdown_cosmetic_timer_step` (`0x823FF534`) scale two per-update constants, the crowd animation clock's 1/30 and a
+0.033 s timer, to the update's length.
+
+The title's frame timer (`sub_823263D8`, hooked in `src/frame_pacing.cpp`) keeps the fixed step's minimum frame, so with
+the fixed step off it published 0 ms at `0x82D99128` on almost every other 60 FPS frame; a camera mode change on such a
+frame divided by it, and the camera, the player and the audio listener went NaN. With the fixed step off the hook
+publishes the port's own frame time instead, never 0.

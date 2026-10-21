@@ -200,6 +200,7 @@ set(CRACKDOWN_SOURCES
     src/gpu_fence_wait.cpp
     src/graphics_adapters.cpp
     src/guest_fault_log.cpp
+    src/hang_watchdog.cpp
     src/launcher.cpp
     src/launcher_achievements.cpp
     src/launcher_achievements_page.cpp
@@ -234,6 +235,14 @@ set(CRACKDOWN_SOURCES
     src/skip_intro.cpp
 )
 set_source_files_properties(src/updater/third_party/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
+# Stricter checks for the project's own C++ only: not the generated code, the SDK headers (system includes) or the SDK
+# sources rexglue_setup_target adds to this target.
+set(CRACKDOWN_WARNINGS -Wall -Wextra
+    -Wshadow-all -Wimplicit-fallthrough -Wnull-dereference -Wformat=2 -Wundef -Wcast-qual -Wextra-semi
+    -Wunreachable-code-aggressive -Wconditional-uninitialized -Wloop-analysis -Wrange-loop-analysis -Wcomma
+    -Wunused-member-function -Wunused-template -Wdeprecated -Wsuggest-override -Wnewline-eof)
+set_property(SOURCE ${CRACKDOWN_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+    "$<$<COMPILE_LANG_AND_ID:CXX,Clang,AppleClang>:${CRACKDOWN_WARNINGS}>")
 
 if(WIN32)
     # Resource 1 is the first icon in the executable: Explorer, and SDL's window class, use it. The icon is
@@ -265,10 +274,12 @@ rexglue_setup_target(crackdown GPU_PLUGINS xenos)
 target_link_libraries(crackdown PRIVATE trg::launcher)
 target_compile_definitions(crackdown PRIVATE
     CRACKDOWN_PORT_VERSION="${PROJECT_VERSION}"
-    CRACKDOWN_TRG_VERSION="${CRACKDOWN_TRG_VERSION}")
+    CRACKDOWN_TRG_VERSION="${CRACKDOWN_TRG_VERSION}"
+    # CD_UPDATE_TEST* environment overrides for manual updater testing; release packages are built as Release.
+    $<$<NOT:$<CONFIG:Release>>:CRACKDOWN_UPDATE_TEST_OVERRIDES>)
 
 if(WIN32)
-    target_link_libraries(crackdown PRIVATE shcore synchronization dxgi)
+    target_link_libraries(crackdown PRIVATE shcore synchronization dxgi dbghelp)
     # The SDK stages its DLLs only when the program links, so a rebuilt runtime or GPU plugin has to make it link
     # again; the check and staging targets below and tools/build.ps1 also verify the staged copies.
     foreach(_sdk_dll rexruntime rexruntimed rexruntimerd rexgpu-xenos rexgpu-xenosd rexgpu-xenosrd)
