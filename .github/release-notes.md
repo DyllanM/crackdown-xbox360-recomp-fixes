@@ -1,63 +1,79 @@
-# Crackdown Recompiled v0.4.0
+# Crackdown Recompiled v0.5.0
 
 Crackdown for Xbox 360 as a native PC recompilation, with enhanced graphics, high frame rates, modern display support, keyboard and mouse support, a full launcher, offline achievements and language selection. It runs natively on Windows, and experimentally on Linux and Steam Deck as an AppImage.
 
+v0.5.0 is a major update. It adds true direct mouse look, fully remappable keyboard controls and modern button prompts. It fixes the explosion and ragdoll crash, along with a long list of physics problems above 30 FPS. The launcher now updates itself.
+
+Thanks to @GaetanVigner and @DyllanM for their first contributions to the project.
+
 ## What's New
 
-### Performance
-- **Lower CPU overhead** across the graphics command processor, with better scaling at high frame rates, improved performance in demanding city scenes and better use of modern CPUs.
-- **Direct3D 12 submission on its own thread** (Windows): graphics submission runs independently of the main GPU command processor thread. On CPUs with eight or more logical processors, the heavy graphics host threads are also scheduled away from the first two.
-- **Faster command processing**: shared-memory checks no longer take a lock in the common case, CPU writes invalidate less GPU memory, and most register writes are handled in bulk, while registers with side effects keep their exact behavior.
-- **Less repeated GPU state work**: draw state is reused when nothing changed, and redundant render-target ownership, transfer and texture-sampler work is skipped. Fewer memory uploads are repeated.
-- **Less waiting on the GPU**, with reduced synchronization and fence overhead on both platforms.
-- **Improved audio synchronization** and audio worker thread behavior.
+### Input & Controls
+- **True direct mouse look**: the mouse turns the camera directly instead of emulating a controller stick, so there is no stick deadzone or speed curve in the way. Mouse sensitivity now ranges from 0.10x to 10.00x.
+- **Fully remappable keyboard controls**: every keyboard control can be rebound on the launcher's **Controls** page. Click a control, then press the new key. **Reset to defaults** restores the original layout.
+- **Modern button prompts and sharper HUD text**: the old Xbox 360 button glyphs are replaced by sharp modern ones, and HUD text is redrawn at twice the original resolution from the game's own typeface. With keyboard and mouse in use, prompts show your bound keys, and they switch back to controller glyphs as soon as a pad is used.
+- **Better switching between mouse and controller**: the cursor follows the last device you used. A click in gameplay captures the mouse, and a controller, an overlay, menu keys or switching away from the window release it.
+- **Any connected controller can now press Start**, including when several pads are or were connected (#10, by @GaetanVigner).
 
-### Frame Pacing
-- **30 and 60 FPS**: when the PC misses a frame, the game catches up, so game time keeps its normal speed instead of slowing down.
-- **90 FPS and higher, including Unlimited**: frames are paced by the host for even frame delivery.
+### Stability & Crash Fixes
+- **Fixed: the explosion and ragdoll crash** ("Unhandled guest access violation ... 0x72D32F98", issues #8, #9 and #11). Above 30 FPS, the game's frame timer could report 0 ms frames, and a camera change during a knockdown or ragdoll then divided by zero. That could turn the world black and leave you without control, and the crash followed. The root cause is fixed (#12, by @DyllanM), and guards in the camera, aim, look-at and audio listener code stop invalid values from spreading or crashing the 3D sound pass (#10, by @GaetanVigner).
+- **Fixed: ragdolls restarting through the floor** and related camera instability when a character is knocked down again while already ragdolled (#10, by @GaetanVigner).
+- **Fixed: a crash from removed game objects** that stayed in the game's object list.
+- **Fixed: audio voices stalling for good** after a long hitch on the PC.
+- **Hang reports** (Windows): if the game freezes, the call stack of every thread is written to `hang_<n>.txt` in the logs folder, so freezes can be diagnosed from a report (#10, by @GaetanVigner).
 
-Keyboard and mouse input is adapted from [Unowa001/crackdown-recomp](https://github.com/Unowa001/crackdown-recomp) (BSD 3-Clause); its notice is in the `licenses` folder of the ZIP and in the AppImage.
+### High Frame Rate & Gameplay
+- **Fixed: launches on slopes and off ledges, and speed build-up while running down stairs and slopes above 30 FPS** (#10, by @GaetanVigner; #12, by @DyllanM).
+- **Fixed: rockets and grenade rounds sometimes disappearing without exploding at high frame rates** (#10, by @GaetanVigner).
+- **Fixed: characters getting stuck in walls or the floor** after landings, get-ups and steep faces at high frame rates, with gravity and other character timing kept at their 30 FPS behavior (#10, by @GaetanVigner).
+- **Improved: Xbox 360-accurate vector math**: multiply-adds and dot products now round once, as on the console. With double rounding, a unit length could come out above 1.0, which added to the downhill speed build-up (#12, by @DyllanM). This adds no new CPU requirement: processors with FMA3 use it, and others get identical results through an exact fallback.
+- **Improved: smoother game steps at Unlimited and during frame-rate dips**: when the PC cannot hold the selected rate, the game no longer alternates between very short and very long steps (#10, by @GaetanVigner).
+- **Fixed: crowd animation and a cosmetic timer running at the wrong speed** above 30 FPS.
+- 30 FPS behavior is unchanged by these fixes. Only the vector rounding applies at every rate, because it now matches the hardware.
+
+### Launcher & Quality of Life
+- **Automatic launcher updates**: the launcher checks the project's GitHub releases once per start. When a newer release exists, an update banner appears, and nothing is installed until you choose **UPDATE NOW** and then **RESTART TO UPDATE**. Only the port's own program files are replaced. Game files, DLC, saves, settings, logs and caches are kept. This works for the Windows ZIP and the AppImage. v0.4.0 and earlier have no updater, so install v0.5.0 manually; later releases can then be installed from the launcher.
+- **Secure updates**: updates are downloaded only over HTTPS from the project's GitHub releases, every redirect is checked, and each package is verified against its published SHA-256 checksum before it is installed.
+- **New launcher header artwork**.
+- **Native main-menu Quit**: the main menu's Quit option now asks for confirmation with the game's own dialog and closes the game cleanly.
+
+### Runtime & Compatibility
+- Runtime fixes in the ReXGlue SDK layer: a dangling string when launching a title, wrong string comparisons, a negative scissor treated as "no scissor", and a broad warning cleanup with no behavior change (#10, by @GaetanVigner).
+- XMA audio decoding keeps draining a partly delivered frame and no longer invalidates output early, so voices recover after a long stall.
+- Unified session logging: on Windows, a crash adds a `CRASH REPORT` section to the session log. The launcher's **About** page has a **Detailed logging** option and opens the logs folder.
+
+Keyboard and mouse input, the XMA stall guards, and parts of the vector math and high frame rate timing work are adapted from [Unowa001/crackdown-recomp](https://github.com/Unowa001/crackdown-recomp) (BSD 3-Clause). Its notice is in the `licenses` folder of the ZIP and in the AppImage.
 
 ## Highlights
 - **Native Windows PC recompilation** (Direct3D 12): the game's own code, not an emulator.
 - **Native Linux / Steam Deck AppImage (Experimental)**: Vulkan, no Proton or Wine.
+- **30 / 60 / 90 / 120 / 144 / 165 / 240 FPS and Unlimited**, with game speed and physics that hold up at every rate.
 - **Render Resolution up to 4x**, including 4K-class output depending on the selected aspect ratio and display setup.
-- **30 / 60 / 90 / 120 / 144 / 165 / 240 FPS and Unlimited**, with improved frame pacing.
 - **Native Aspect Ratio**: 16:9, 16:10, **21:9 Ultrawide**, **32:9 Super Ultrawide**, 4:3 and 5:4.
-- **Internal render resolution**: 100% Native, 75% Performance or 50% Low-end.
-- **Cheats**: 7 gameplay cheats, set in the launcher and changed in game with **F10**.
-- **Achievements**: a launcher page and an in-game overlay (**F7**), with no Xbox Live connection.
-- **Corrected exposure and brightness**, and a fix for the crash after Loading Saved Game.
-- **Language selector**: English, French, German, Italian, Spanish (Spain), Spanish (Latin America), Czech, Polish, Hungarian and Japanese.
-- **Skip intro**, **Graphics card selection** on Windows, **Windowed / Borderless Fullscreen** with **F11**, and a full launcher.
+- **Keyboard and mouse** with true direct mouse look and remappable controls, together with any Xbox controller.
+- **Achievements** with no Xbox Live connection, **Cheats**, a **Language selector** and **Skip intro**.
 
 ## Graphics & Display
 - **Native Aspect Ratio**: 16:9 Original, 16:10, 21:9, 32:9, 4:3 and 5:4. The game renders in the chosen format, so wider formats show more of the scene to the sides. Menus and videos made for 16:9 are not redesigned for every format.
-- **Render Resolution** (1x to 4x) and **Internal render resolution** (100% / 75% / 50%), both separate from the Window size.
+- **Render Resolution** (1x to 4x) and **Internal render resolution** (100% Native, 75% Performance, 50% Low-end), both separate from the window size.
 - **Presentation**: Letterbox or Stretch.
 - **Graphics card selection** on Windows: Automatic or a specific GPU.
 - **Windowed or Borderless Fullscreen**, **F11** to switch while playing, monitor selection, and window sizes that follow the aspect ratio.
-- **Window title options**: frame rate and render resolution.
+- **Corrected exposure and brightness**.
 - Anti-aliasing (FXAA), Multisampling and Texture filtering options.
+- **Performance**: low CPU overhead across the graphics command processor and Direct3D 12 submission on its own thread (Windows). At 30 and 60 FPS, missed frames are caught up so game time keeps its normal speed. 90 FPS and higher are paced for even frame delivery.
 
 ## Quality of Life
+- **Launcher** with an installer for your own disc image or extracted files, and display, graphics, controls and gameplay options.
+- **Achievements**: the launcher page, or the **F7** overlay in game. Progress is saved locally.
+- **Cheats**: 7 gameplay cheats, set on the launcher page or changed in game with **F10**.
+- **Language selector**: English, French, German, Italian, Spanish (Spain), Spanish (Latin America), Czech, Polish, Hungarian and Japanese.
 - **Skip intro**: starts directly at the title screen.
-- **Language selector** in the launcher for the game's text and interface.
-- **Achievements**: the launcher page, or **F7** in game. Unlock progress is saved locally.
-- **Cheats**: the launcher page, or **F10** in game.
-- **Launcher** with an installer for your own disc image or extracted files, and display, graphics and gameplay options.
-- **F11** display toggle, and an FPS counter (**F2**) plus frame rate and render resolution in the window title.
-- **Keyboard and mouse support** with mouse aiming, menu navigation and configurable mouse sensitivity, while Xbox controllers continue to work normally.
-- Portable `user_data` folder for saves, settings and caches.
-
-## Language
-Select the game's text and interface language from the launcher: English, French, German, Italian, Spanish (Spain), Spanish (Latin America), Czech, Polish, Hungarian or Japanese. The available resources come from your own game files, and the language is applied when the game starts.
-
-## Offline Achievements
-Open the launcher's Achievements page, or press **F7** while playing for the overlay, with the original icons, descriptions, Gamerscore, unlock status and progress. Progress is saved locally on your PC. There is no Xbox Live connection or synchronization.
+- An FPS counter (**F2**), plus frame rate and render resolution in the window title.
+- A portable `user_data` folder for saves, settings and caches.
 
 ## Linux / Steam Deck (Experimental)
-Linux and Steam Deck support is **Experimental**; the release itself is not. It is a native x86_64 build using Vulkan, shipped as an AppImage, and does not use Proton or Wine. It has the same launcher and platform-neutral features as Windows, including the keyboard and mouse implementation, but keyboard and mouse input has been tested manually on Windows only. If the system cannot mount the AppImage with FUSE, it unpacks itself and runs from there. The AppImage is built and checked by automated scripts and tests, but it has not yet been fully validated on real Linux PCs or Steam Deck hardware. Reports are welcome. See [docs/linux.md](https://github.com/saulob/crackdown-xbox360-recompiled/blob/main/docs/linux.md).
+Linux and Steam Deck support is **Experimental**; the release itself is not. It is a native x86_64 build using Vulkan, shipped as an AppImage, and does not use Proton or Wine. It has the same launcher and platform-neutral features as Windows, including keyboard and mouse, remapping and the launcher updates. Hang reports are Windows only. Keyboard and mouse input has been tested manually on Windows only. If the system cannot mount the AppImage with FUSE, it unpacks itself and runs from there. The AppImage is built and checked by automated scripts and tests, but it has not yet been fully validated on real Linux PCs or Steam Deck hardware. Reports are welcome. See [docs/linux.md](https://github.com/saulob/crackdown-xbox360-recompiled/blob/main/docs/linux.md).
 
 ## Known Issues
 - Background music may occasionally stop during gameplay while sound effects and voices continue.
@@ -78,24 +94,24 @@ Requirements:
 - **Linux**: 64-bit x86 Linux with glibc 2.31 or newer (such as Ubuntu 20.04 or later), a Vulkan driver, and an X11 or Wayland desktop.
 
 ## Downloads
-**Windows**: **Crackdown-v0.4.0-windows-x64.zip**
+**Windows**: **Crackdown-v0.5.0-windows-x64.zip**
 1. Unzip it anywhere you can write to.
 2. Run **crackdown.exe**.
 3. On the launcher's **Play** page click **Install from disc image...** and pick your own Crackdown `.iso`, or **Install from folder...** for extracted disc files.
 4. Press **PLAY**.
 
-**Linux and Steam Deck (Experimental)**: **CrackdownRecompiled-v0.4.0-x86_64.AppImage**
+**Linux and Steam Deck (Experimental)**: **CrackdownRecompiled-v0.5.0-x86_64.AppImage**
 1. Put it in a folder you can write to and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
 2. Run it and install your own disc image from the **Play** page, as on Windows. The game files go in a `game` folder next to the AppImage.
 3. On a Steam Deck, do this in **Desktop Mode**, then add the AppImage with **Games > Add a Non-Steam Game to My Library** and play it from **Game Mode**.
 
 ## Reporting Problems
-If the game does not start or crashes, please open an [issue](https://github.com/saulob/crackdown-xbox360-recompiled/issues) and attach the newest `crackdown_*.log` file from the `logs` folder next to the program (next to the AppImage on Linux), with a line about what you were doing. For Linux reports, please also say your distribution and graphics card, and whether you start the AppImage from Steam.
+If the game does not start, crashes or freezes, please open an [issue](https://github.com/saulob/crackdown-xbox360-recompiled/issues). Attach the newest `crackdown_*.log` file from the `logs` folder next to the program (next to the AppImage on Linux), and after a freeze any `hang_<n>.txt` file, with a line about what you were doing. The launcher's **About** page opens that folder. For Linux reports, please also say your distribution and graphics card, and whether you start the AppImage from Steam.
 
 ## Checksums
-SHA-256 files are published with the release for both downloads: `Crackdown-v0.4.0-windows-x64.sha256` and `CrackdownRecompiled-v0.4.0-x86_64.sha256`.
+SHA-256 files are published with the release for both downloads: `Crackdown-v0.5.0-windows-x64.sha256` and `CrackdownRecompiled-v0.5.0-x86_64.sha256`.
 
 | File | SHA-256 |
 | --- | --- |
-| `Crackdown-v0.4.0-windows-x64.zip` | `0a215dec75177490258bdf5637f6dba9283f6696ff32cc80467f7c81cd3c2557` |
-| `CrackdownRecompiled-v0.4.0-x86_64.AppImage` | `6ba0895e2861b75a81938bdb5c306c186deeb2e459d63f70a54a901930643ae7` |
+| `Crackdown-v0.5.0-windows-x64.zip` | `@WINDOWS_SHA256@` |
+| `CrackdownRecompiled-v0.5.0-x86_64.AppImage` | `@APPIMAGE_SHA256@` |

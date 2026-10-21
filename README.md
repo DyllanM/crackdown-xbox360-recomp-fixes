@@ -82,7 +82,7 @@ The launcher accepts the disc image (`.iso`) or a folder holding the files extra
 
 ### Windows
 
-1. Download **Crackdown-v0.4.0-windows-x64.zip** from the [latest release](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest) and extract it anywhere you can write to.
+1. Download **Crackdown-v0.5.0-windows-x64.zip** from the [latest release](https://github.com/saulob/crackdown-xbox360-recompiled/releases/latest) and extract it anywhere you can write to.
 2. Run **crackdown.exe**. The launcher opens.
 3. On the **Play** page click **Install from disc image...** and pick your Crackdown `.iso`, or click **Install from folder...** for extracted disc files. You can also drop either on the launcher window.
 4. Wait until **Ready to play** appears. The game files are copied into the `game` folder next to the program.
@@ -96,7 +96,7 @@ Windows may warn the first time you run the program, because the release is not 
 
 **Experimental.** Crackdown Recompiled includes a native Linux x86_64 build using ReXGlue's Vulkan backend. It does not use Proton or Wine, and the AppImage contains the same platform-neutral game and launcher features as the Windows build, including the keyboard and mouse implementation. It is built and checked by automated scripts and tests, but this release has not yet been fully validated on real Linux PCs or Steam Deck hardware, and keyboard and mouse input has been tested manually on Windows only. Reports are welcome.
 
-1. Download **CrackdownRecompiled-v0.4.0-x86_64.AppImage** from the release and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
+1. Download **CrackdownRecompiled-v0.5.0-x86_64.AppImage** from the release and mark it executable (right-click > **Properties** > **Permissions** > **Is executable**, or `chmod +x`).
 2. Run it, then install your disc image from the **Play** page as on Windows. The game files go in a `game` folder next to the AppImage.
 3. On a Steam Deck, do this in **Desktop Mode**, then add the AppImage with **Games > Add a Non-Steam Game to My Library** and play it from **Game Mode**.
 
@@ -155,9 +155,10 @@ Optional gameplay modifiers, all off by default. They start with the values save
 
 ### Controls
 - Xbox and XInput controllers work without setup; any connected pad can press Start
-- **Keyboard and mouse**: enabled or disabled (off by default). **W A S D** move, the mouse turns the camera and aims, the **left mouse button** fires and the **right mouse button** locks on. It works together with any connected Xbox controller.
-- **Mouse sensitivity**: 0.10x to 10.00x (default 1.00x). The mouse turns the camera directly; it does not go through the right stick's deadzone or speed curve.
-- The complete key list is on the Controls page. Plain arrow keys also turn the camera, and menus use **W A S D** or **Shift + arrow** keys.
+- **Keyboard and mouse**: enabled or disabled (off by default). By default **W A S D** move, the mouse turns the camera and aims, the **left mouse button** fires and the **right mouse button** locks on. It works together with any connected Xbox controller.
+- **Direct mouse look**: the mouse turns the camera directly, not by emulating the right stick, so there is no stick deadzone or speed curve. A click in gameplay captures the mouse. **Esc** always releases it, and so do the keys bound to Start and Back, so rebinding those also changes which keys release it.
+- **Mouse sensitivity**: 0.10x to 10.00x (default 1.00x).
+- **Remappable keyboard controls**: every keyboard control, including Start and Back, can be rebound on the Controls page: click a control, then press the new key (**Esc** cancels). **Reset to defaults** restores the default keys and sensitivity. By default, plain arrow keys also turn the camera, and menus use **W A S D** or **Shift + arrow** keys.
 
 ### Achievements
 - Every achievement with its icon, description, Gamerscore and unlock status. It shows the same progress as the in-game **F7** list.
