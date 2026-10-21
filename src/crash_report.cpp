@@ -22,12 +22,12 @@
 namespace crackdown {
 namespace {
 
-constexpr size_t kReportBufferBytes = 16384;
-constexpr size_t kLogPathChars = 1024;
 constexpr int kSeparatorWidth = 60;
 constexpr char kHexDigits[] = "0123456789ABCDEF";
 
 #if defined(_WIN32)
+constexpr size_t kReportBufferBytes = 16384;
+constexpr size_t kLogPathChars = 1024;
 constexpr const char* kArchitecture =
 #if defined(_M_ARM64)
     "arm64";

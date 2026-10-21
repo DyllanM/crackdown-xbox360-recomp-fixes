@@ -36,6 +36,7 @@ bool Has(const std::string& text, const char* needle) {
   return text.find(needle) != std::string::npos;
 }
 
+#if defined(_WIN32)
 int CountOf(const std::string& text, const char* needle) {
   int count = 0;
   for (size_t at = text.find(needle); at != std::string::npos; at = text.find(needle, at + 1)) {
@@ -43,6 +44,7 @@ int CountOf(const std::string& text, const char* needle) {
   }
   return count;
 }
+#endif
 
 std::string Format(const crackdown::CrashReport& report) {
   char buffer[8192];
