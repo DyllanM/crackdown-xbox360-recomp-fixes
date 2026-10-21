@@ -75,6 +75,7 @@ function Initialize-RexglueSource($Layout, [string]$Src, $Patches) {
 
 function Build-RexglueRuntime($Layout, [string]$Src, $Toolchain, [int]$Jobs) {
     $flags = "$RexglueRuntimeBuildFlags -ffile-prefix-map=$($Src.Replace('\', '/'))=."
+    $pgo = Get-RexglueRuntimePgo $Layout.Root
     $parallel = @(if ($Jobs -gt 0) { '--parallel', $Jobs } else { '--parallel' })
     Push-Location $Src
     try {
@@ -82,7 +83,8 @@ function Build-RexglueRuntime($Layout, [string]$Src, $Toolchain, [int]$Jobs) {
             & $Toolchain.CMake --preset $RexglueRuntimePreset `
                 "-DCMAKE_C_COMPILER:FILEPATH=$($Toolchain.Clang)" "-DCMAKE_CXX_COMPILER:FILEPATH=$($Toolchain.ClangXX)" `
                 "-DCMAKE_LINKER:FILEPATH=$($Toolchain.LldLink)" "-DCMAKE_MAKE_PROGRAM:FILEPATH=$($Toolchain.Ninja)" `
-                "-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags"
+                "-DCMAKE_C_FLAGS=$flags" "-DCMAKE_CXX_FLAGS=$flags" `
+                "-DREXGPU_PGO_USE=$($pgo.Profile.Replace('\', '/'))"
         }
         foreach ($config in @($Layout.Config)) {
             Invoke-Native "ReXGlue build ($config)" {

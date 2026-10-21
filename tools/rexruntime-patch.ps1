@@ -7,6 +7,16 @@ $RexglueRuntimeBuildFlags = '-march=x86-64-v2'
 $RexglueRuntimeTargets = @('rexruntime', 'rexgpu-xenos')
 $RexglueRuntimeStampName = 'rexruntime-patch.txt'
 
+# Profile-guided optimization of the GPU plugin in Release (patch 0102): the profile in patches\rexglue-sdk-pgo is used
+# when it exists (see docs\build-workflow.md).
+function Get-RexglueRuntimePgo([string]$Root) {
+    $profileFile = Join-Path $Root 'patches\rexglue-sdk-pgo\rexgpu-xenos.profdata'
+    if (Test-Path -LiteralPath $profileFile -PathType Leaf) {
+        return @{ Mode = "use $(Get-FileSha256 $profileFile)"; Profile = $profileFile }
+    }
+    return @{ Mode = 'off'; Profile = '' }
+}
+
 function Get-RexglueConfigSuffix([string]$Config) {
     return @{ Debug = 'd'; RelWithDebInfo = 'rd'; Release = '' }[$Config]
 }
@@ -61,6 +71,7 @@ function Get-RexglueRuntimeInputs($Layout, [string]$Mode) {
     if ($Mode -eq 'stock') { return $inputs }
     $inputs['build.preset'] = $RexglueRuntimePreset
     $inputs['build.flags'] = $RexglueRuntimeBuildFlags
+    $inputs['build.pgo'] = (Get-RexglueRuntimePgo $Layout.Root).Mode
     $inputs['build.targets'] = $RexglueRuntimeTargets -join ','
     $inputs['build.configs'] = $Layout.Config
     $inputs['toolchain'] = (Get-BuildToolchain).Id

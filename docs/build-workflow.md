@@ -36,6 +36,19 @@ Toolchain detection restores `.EXE` to `PATHEXT` when missing before invoking `v
 a Windows PowerShell process inherits an incomplete environment from WSL; builds still use native Windows paths
 and Visual Studio's Clang, LLD, CMake, Ninja and x64 SDK environment.
 
+## Profile-guided optimization of the GPU plugin
+
+The GPU plugin (`rexgpu-xenos.dll`, which holds the command processor) is built with profile-guided optimization in
+Release when `patches\rexglue-sdk-pgo\rexgpu-xenos.profdata` exists (patch 0102). The profile's SHA-256 is part of the
+runtime fingerprint, so replacing it rebuilds the runtime, and deleting it builds the plugin without the profile. The
+profile was recorded with an instrumented build of the plugin (clang `-fprofile-generate`) during five minutes of city
+driving and combat on foot, and merged with Visual Studio's `llvm-profdata`.
+
+Functions whose code changed since the profile was made are optimized without it (clang matches functions by name and
+control-flow hash, and the build silences the out-of-date warnings), so a stale profile only means less optimization,
+never a failed build. Static functions are named with their source path, so their part of the profile only applies to a
+clone at the same path as the one it was made in; member and other external functions match anywhere.
+
 ## Tests, launcher and packaging
 
     .\tools\test.ps1                         # pure-logic tests (user data, settings file, window placement, installer, ...)

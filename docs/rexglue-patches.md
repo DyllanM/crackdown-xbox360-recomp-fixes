@@ -5,8 +5,8 @@ result is installed over the stock files in `tools/rexglue`. The game compiles a
 must not move virtual functions or data members of classes the generated game code uses.
 
 `NNNN-name.patch` applies on both platforms, `NNNN-name.windows.patch` only on Windows and `NNNN-name.linux.patch` only on
-Linux. Numbers are unique and patches apply in name order; gaps are fine. 55 patches are common, 24 are Windows only and
-13 are Linux only, so 79 apply on Windows and 68 apply on Linux. Patches 0005, 0052 and 0095 change the code generator and
+Linux. Numbers are unique and patches apply in name order; gaps are fine. 55 patches are common, 25 are Windows only and
+13 are Linux only, so 80 apply on Windows and 68 apply on Linux. Patches 0005, 0052 and 0095 change the code generator and
 are the reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
 
 | # | Platform | Purpose |
@@ -93,6 +93,7 @@ are the reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change
 | 0099 | windows | `gpu_skip_unchanged_constant_writes` (on): when the game rewrites float, bool, loop or fetch constants with the values they already have, the D3D12 command processor keeps the uploaded constant buffers, the texture bindings and the sampler memo instead of rebuilding them for the next draw. Vertex buffer residency is still reset on every fetch constant write, since the game may have rewritten the vertex data at the same address |
 | 0100 | windows | the texture cache indexes its textures by base page, so `FindResolveCopyTargets` looks at the textures on the resolve's page instead of scanning all of them on every resolve. Portable, but Windows only until a Linux build checks it |
 | 0101 | windows | D3D12 per-draw loops: vertex buffer residency is invalidated a 64-bit mask at a time instead of a bit at a time, the used float constants are copied a run of consecutive constants per `memcpy`, and the stencil tile bits are read and added in up to two contiguous runs that vectorize instead of a byte at a time with wrapping |
+| 0102 | windows | profile-guided optimization of the GPU plugin in Release: `REXGPU_PGO_USE` names a merged profile to optimize it with, and `tools\rexruntime-patch.ps1` sets it to `patches\rexglue-sdk-pgo\rexgpu-xenos.profdata` when that file exists (see [build-workflow.md](build-workflow.md#profile-guided-optimization-of-the-gpu-plugin)) |
 
 Patches 0054 to 0058, 0078 to 0083, 0095 and 0096 and the hooks in `src/audio_guest_sync.cpp` are adapted from
 Unowa001/crackdown-recomp (BSD 3-Clause, notice in [THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).
