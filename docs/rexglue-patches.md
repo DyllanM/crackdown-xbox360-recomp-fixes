@@ -5,8 +5,8 @@ result is installed over the stock files in `tools/rexglue`. The game compiles a
 must not move virtual functions or data members of classes the generated game code uses.
 
 `NNNN-name.patch` applies on both platforms, `NNNN-name.windows.patch` only on Windows and `NNNN-name.linux.patch` only on
-Linux. Numbers are unique and patches apply in name order; gaps are fine. 55 patches are common, 19 are Windows only and
-13 are Linux only, so 74 apply on Windows and 68 apply on Linux. Patches 0005, 0052 and 0095 change the code generator and
+Linux. Numbers are unique and patches apply in name order; gaps are fine. 55 patches are common, 21 are Windows only and
+13 are Linux only, so 76 apply on Windows and 68 apply on Linux. Patches 0005, 0052 and 0095 change the code generator and
 are the reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change the runtime and the GPU plugin.
 
 | # | Platform | Purpose |
@@ -88,6 +88,8 @@ are the reason `tools\codegen.ps1` builds its own `rexglue.exe`; the rest change
 | 0094 | all | a passive input-activity callback reports each device's changed state from `InputSystem::GetState`; the cursor policy reads it without altering gamepad state, merging or device assignment |
 | 0095 | all | codegen: `vmaddfp`/`vnmsubfp` (and the 128 forms) round once like the hardware, and `vmsum3fp128`/`vmsum4fp128` sum in double and round once (Xenia's order) instead of `dpps`; with two roundings a unit length could round above 1.0. The helpers are emitted into the generated `crackdown_pch.h`: with `-mfma` or on ARM64 they use the native fused multiply-add, otherwise x64 checks the CPU once and uses `vfmadd213ps` on FMA3 hosts and the exact round-to-odd emulation elsewhere, with the same bits, so FMA3 is not required |
 | 0096 | all | XMA `Work()`: a partly delivered frame keeps draining after the input runs out, an input-starved context sets its output write offset to the read offset, and output is invalidated only when the ring is full, so voices no longer stall for good after a long host hitch |
+| 0097 | windows | `rex::bit_scan_forward` is inline in `math.h` instead of defined in the runtime DLL: the GPU plugin calls it in its per-draw loops (constant maps, render target and texture bindings), and every call went through the import table. The runtime no longer exports it; nothing outside the SDK calls it. Portable, but Windows only until a Linux build checks it |
+| 0098 | windows | the GPU plugin builds with ThinLTO in Release (`/opt:lldlto=3`), so the command processor's per-draw path (render target, texture and pipeline caches, shared memory, register file) inlines across its translation units |
 
 Patches 0054 to 0058, 0078 to 0083, 0095 and 0096 and the hooks in `src/audio_guest_sync.cpp` are adapted from
 Unowa001/crackdown-recomp (BSD 3-Clause, notice in [THIRD-PARTY-LICENSES.txt](../packaging/licenses/THIRD-PARTY-LICENSES.txt)).
